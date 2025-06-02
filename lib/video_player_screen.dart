@@ -1,13 +1,10 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:io'; // Already here, just confirming
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Already here
 import 'package:perfect_volume_control/perfect_volume_control.dart';
-import 'package:video_player/video_player.dart';
-import 'package:flutter/services.dart';
-
-
-
-
+import 'package:flutter_vlc_player/flutter_vlc_player.dart'; // Changed import
 
 class CustomVideoPlayer extends StatefulWidget {
   final String videoPath;
@@ -23,7 +20,7 @@ class CustomVideoPlayer extends StatefulWidget {
 }
 
 class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
-  late VideoPlayerController _controller;
+  late VlcPlayerController _vlcController; // Changed controller type
 
   /// Tracks whether the UI is locked.
   bool _isLocked = false;
@@ -35,69 +32,132 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
   /// When locked, tapping toggles only this single lock button’s visibility.
   bool _lockButtonVisible = false;
 
-  Duration _videoDuration = Duration.zero;
-  Duration _currentPosition = Duration.zero;
+  // Duration _videoDuration = Duration.zero; // Replaced by ValueNotifier
+  // Duration _currentPosition = Duration.zero; // Replaced by ValueNotifier
   double _currentVolume = 1.0;
   double _volumeFactor = 0.05;
+
+  // ValueNotifiers for reactive UI updates
+  late final ValueNotifier<Duration> _currentPositionNotifier;
+  late final ValueNotifier<Duration> _videoDurationNotifier;
+  late final ValueNotifier<bool> _isPlayingNotifier;
+  late final ValueNotifier<bool> _isInitializedNotifier;
+  // AspectRatio can also be a ValueNotifier if it can change dynamically,
+  // but for video, it's usually fixed after initialization.
+  // We'll use _isInitializedNotifier to rebuild the AspectRatio widget.
+  late final ValueNotifier<double> _aspectRatioNotifier; // Added for VLC player aspect ratio
+
 @override
-
   void initState() {
-    
     super.initState();
-// Set black colors for status and navigation bars
-   // Set the status bar and navigation bar colors
-PerfectVolumeControl.hideUI = true;
 
-  SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
-    statusBarColor: Colors.black,
-    systemNavigationBarColor: Colors.transparent,
-    systemNavigationBarDividerColor: Colors.transparent, // Fully transparent divider
+    // Initialize ValueNotifiers
+    _currentPositionNotifier = ValueNotifier(Duration.zero);
+    _videoDurationNotifier = ValueNotifier(Duration.zero);
+    _isPlayingNotifier = ValueNotifier(false);
+    _isInitializedNotifier = ValueNotifier(false);
+    _aspectRatioNotifier = ValueNotifier(16 / 9); // Default aspect ratio
 
-    systemNavigationBarIconBrightness: Brightness.light,
-    statusBarIconBrightness: Brightness.light,
-  ));
- SystemChrome.setEnabledSystemUIMode(SystemUiMode.leanBack);
+    PerfectVolumeControl.hideUI = true;
 
-    _controller = VideoPlayerController.file(File(widget.videoPath))
-      ..initialize().then((_) {
-        setState(() {
-          _videoDuration = _controller.value.duration;
-        });
-        _controller.play();
-        SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
-            statusBarColor: Colors.black, // Set status bar color to black
-             statusBarIconBrightness: Brightness.light, // Light icons for dark background
-            systemNavigationBarColor: Colors.transparent, // Set navigation bar color to black
-                    systemNavigationBarDividerColor: Colors.transparent, // Transparent divider
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+      statusBarColor: Colors.black,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+      statusBarIconBrightness: Brightness.light,
+    ));
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.leanBack);
 
-            systemNavigationBarIconBrightness: Brightness.light, // Light icons for dark background
-        ));
-      });
+    _vlcController = VlcPlayerController.file(
+      File(widget.videoPath),
+      hwAcc: HwAcc.FULL,
+      autoPlay: false, // We will call play explicitly via listener
+      options: VlcPlayerOptions(
+        // Example options (refer to VLC documentation for more)
+        // options: [
+        //   '--no-audio', // Example: disable audio
+        //   '--rtsp-tcp', // Use RTSP over TCP
+        // ],
+        // subtitle: VlcSubtitle.file(File('/path/to/subtitle.srt')), // Example for subtitles
+      ),
+    );
 
-    _controller.addListener(() {
-      if (_controller.value.isInitialized) {
-        setState(() {
-          _currentPosition = _controller.value.position;
-        });
-      }
-    });
-    // Lock the screen orientation to landscape
-    SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeRight, DeviceOrientation.landscapeLeft]);
+    // Add listener BEFORE any potential play calls or other interactions
+    _vlcController.addListener(_vlcPlayerListener);
 
-    
-  
+    // VlcPlayerController initializes itself. We don't call a separate initialize() method.
+    // Play will be triggered from the listener once isInitialized is true.
 
-    // Initialize the volume when the player is ready
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeRight,
+      DeviceOrientation.landscapeLeft,
+    ]);
+
     _initializeVolume();
   }
 
   @override
   void dispose() {
-     _volumeDebounce?.cancel(); // Cancel the debounce timer if active
-    _controller.dispose();
-     // Optionally, release screen wake locks
-   
+    _volumeDebounce?.cancel();
+    _vlcController.removeListener(_vlcPlayerListener);
+    _vlcController.stop(); // Recommended before dispose for VLC
+    _vlcController.dispose();
+    _currentPositionNotifier.dispose();
+    _videoDurationNotifier.dispose();
+    _isPlayingNotifier.dispose();
+    _isInitializedNotifier.dispose();
+    _aspectRatioNotifier.dispose();
     super.dispose();
+  }
+
+  bool _hasPlayedOnce = false; // To ensure play is called only once automatically
+
+  // Listener function for VlcPlayerController
+  void _vlcPlayerListener() {
+    if (!mounted) return;
+
+    final value = _vlcController.value;
+
+    // Update initialization state
+    if (value.isInitialized != _isInitializedNotifier.value) {
+      _isInitializedNotifier.value = value.isInitialized;
+    }
+
+    // Update duration
+    if (value.duration != _videoDurationNotifier.value) {
+      _videoDurationNotifier.value = value.duration;
+    }
+
+    // Update position
+    if (value.position != _currentPositionNotifier.value) {
+      _currentPositionNotifier.value = value.position;
+    }
+
+    // Update playing state
+    if (value.isPlaying != _isPlayingNotifier.value) {
+      _isPlayingNotifier.value = value.isPlaying;
+    }
+    
+    // Update aspect ratio
+    if (value.aspectRatio != 0.0 && value.aspectRatio != _aspectRatioNotifier.value) {
+        _aspectRatioNotifier.value = value.aspectRatio;
+    }
+
+
+    // Auto-play logic: Play once when initialized and stopped
+    if (value.isInitialized && !_hasPlayedOnce && value.playingState == PlayingState.stopped) {
+        _vlcController.play();
+        _hasPlayedOnce = true; 
+        // _isPlayingNotifier.value will be updated by the next listener call reacting to play()
+    }
+    
+    // Error handling
+    if (value.hasError) {
+      print('VLC Player Error: ${value.errorDescription}');
+      // Optionally, set an error state here to display in the UI
+      // For example: _errorDescriptionNotifier.value = value.errorDescription;
+    }
   }
 
   /// Initialize system volume using volume_controller
@@ -141,22 +201,24 @@ PerfectVolumeControl.hideUI = true;
   }
   /// Handle horizontal swipe for seeking
   void _onHorizontalDrag(DragUpdateDetails details) {
-    double delta = details.primaryDelta ?? 0.0;
-    final newPosition = _currentPosition +
-        Duration(
-          seconds: (delta /
-                  MediaQuery.of(context).size.width *
-                  _videoDuration.inSeconds)
-              .round(),
-        );
+    if (!_isInitializedNotifier.value) return; // Don't seek if video not ready
 
-    _controller.seekTo(
-      _clampDuration(newPosition, Duration.zero, _videoDuration),
-    );
-    setState(() {
-      _currentPosition =
-          _clampDuration(newPosition, Duration.zero, _videoDuration);
-    });
+    double delta = details.primaryDelta ?? 0.0;
+    final currentPositionMs = _currentPositionNotifier.value.inMilliseconds;
+    final videoDurationMs = _videoDurationNotifier.value.inMilliseconds;
+
+    if (videoDurationMs == 0) return; // Avoid division by zero if duration is not yet known
+
+    final newPositionMs = currentPositionMs +
+        (delta / MediaQuery.of(context).size.width * videoDurationMs).round();
+    
+    final newPosition = Duration(milliseconds: newPositionMs);
+
+    final clampedPosition = _clampDuration(newPosition, Duration.zero, _videoDurationNotifier.value);
+    _vlcController.seekTo(clampedPosition); // Use VlcController
+    // The listener will update _currentPositionNotifier.value.
+    // For immediate feedback during drag, update directly:
+    _currentPositionNotifier.value = clampedPosition;
   }
 
   Duration _clampDuration(Duration value, Duration min, Duration max) {
@@ -219,12 +281,25 @@ PerfectVolumeControl.hideUI = true;
           children: [
             // Video
             Center(
-              child: _controller.value.isInitialized
-                  ? AspectRatio(
-                      aspectRatio: _controller.value.aspectRatio,
-                      child: VideoPlayer(_controller),
-                    )
-                  : CircularProgressIndicator(),
+              child: ValueListenableBuilder<bool>(
+                valueListenable: _isInitializedNotifier,
+                builder: (context, isInitialized, _) {
+                  if (isInitialized) {
+                    return ValueListenableBuilder<double>(
+                      valueListenable: _aspectRatioNotifier,
+                      builder: (context, aspectRatio, _) {
+                        return VlcPlayer(
+                          controller: _vlcController,
+                          aspectRatio: aspectRatio == 0.0 ? 16/9 : aspectRatio, // Use default if 0
+                          placeholder: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                    );
+                  } else {
+                    return Center(child: CircularProgressIndicator());
+                  }
+                },
+              ),
             ),
 
             // Show top & bottom bars only if not locked and controls are visible
@@ -381,36 +456,59 @@ void _showSubtitlesPanel(BuildContext context) {
               // Top row: current time, slider, total time
               Row(
                 children: [
-                  Text(
-                    _formatDuration(_currentPosition),
-                    style: TextStyle(color: Colors.white, fontSize: 14),
+                  ValueListenableBuilder<Duration>(
+                    valueListenable: _currentPositionNotifier,
+                    builder: (context, position, child) {
+                      return Text(
+                        _formatDuration(position),
+                        style: TextStyle(color: Colors.white, fontSize: 14),
+                      );
+                    },
                   ),
                   Expanded(
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        activeTrackColor: Colors.blue,
-                        inactiveTrackColor: Colors.white54,
-                        thumbColor: Colors.blueAccent,
-                        trackHeight: 2.0,
-                        thumbShape: RoundSliderThumbShape(enabledThumbRadius: 8.0),
-                      ),
-                      child: Slider(
-                        value: _currentPosition.inSeconds
-                            .toDouble()
-                            .clamp(0, _videoDuration.inSeconds.toDouble()),
-                        min: 0,
-                        max: _videoDuration.inSeconds.toDouble(),
-                        onChanged: (value) {
-                          setState(() {
-                            _controller.seekTo(Duration(seconds: value.toInt()));
-                          });
-                        },
-                      ),
+                    child: ValueListenableBuilder<Duration>(
+                      valueListenable: _videoDurationNotifier,
+                      builder: (context, videoDuration, child) {
+                        // Also listen to current position for the slider's value
+                        return ValueListenableBuilder<Duration>(
+                          valueListenable: _currentPositionNotifier,
+                          builder: (context, currentPosition, child) {
+                            return SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                activeTrackColor: Colors.blue,
+                                inactiveTrackColor: Colors.white54,
+                                thumbColor: Colors.blueAccent,
+                                trackHeight: 2.0,
+                                thumbShape: RoundSliderThumbShape(enabledThumbRadius: 8.0),
+                              ),
+                              child: Slider(
+                                value: currentPosition.inSeconds
+                                    .toDouble()
+                                    .clamp(0, videoDuration.inSeconds.toDouble()),
+                                min: 0,
+                                max: videoDuration.inSeconds.toDouble() > 0 
+                                     ? videoDuration.inSeconds.toDouble()
+                                     : 1.0, // Avoid max <= min if duration is 0
+                                onChanged: (value) {
+                                  _vlcController.seekTo(Duration(seconds: value.toInt()));
+                                  // Optional: for immediate feedback, though listener should catch it
+                                  _currentPositionNotifier.value = Duration(seconds: value.toInt());
+                                },
+                              ),
+                            );
+                          },
+                        );
+                      },
                     ),
                   ),
-                  Text(
-                    _formatDuration(_videoDuration),
-                    style: TextStyle(color: Colors.white, fontSize: 14),
+                  ValueListenableBuilder<Duration>(
+                    valueListenable: _videoDurationNotifier,
+                    builder: (context, duration, child) {
+                      return Text(
+                        _formatDuration(duration),
+                        style: TextStyle(color: Colors.white, fontSize: 14),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -423,21 +521,27 @@ void _showSubtitlesPanel(BuildContext context) {
                     icon: Icon(Icons.skip_previous, color: Colors.white),
                     onPressed: () {
                       // Implement skip-previous logic if needed
+                      // Example: _vlcController.seekTo(Duration.zero);
                     },
                   ),
-                  IconButton(
-                    icon: Icon(
-                      _controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
-                      color: Colors.white,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        if (_controller.value.isPlaying) {
-                          _controller.pause();
-                        } else {
-                          _controller.play();
-                        }
-                      });
+                  ValueListenableBuilder<bool>(
+                    valueListenable: _isPlayingNotifier,
+                    builder: (context, isPlaying, child) {
+                      return IconButton(
+                        icon: Icon(
+                          isPlaying ? Icons.pause : Icons.play_arrow,
+                          color: Colors.white,
+                        ),
+                        onPressed: () {
+                          if (isPlaying) {
+                            _vlcController.pause();
+                            // Listener will update _isPlayingNotifier.value
+                          } else {
+                            _vlcController.play();
+                             // Listener will update _isPlayingNotifier.value
+                          }
+                        },
+                      );
                     },
                   ),
                   IconButton(
