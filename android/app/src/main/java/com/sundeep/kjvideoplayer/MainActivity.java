@@ -6,6 +6,7 @@ import io.flutter.embedding.android.FlutterActivity;
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.app.FlutterApplication;
+import com.sundeep.kjvideoplayer.nextplayer.NextPlayerPlugin;
 
 public class MainActivity extends FlutterActivity {
     private static final String CHANNEL = "my.channel/keep_screen_on";
@@ -19,6 +20,12 @@ public class MainActivity extends FlutterActivity {
     @Override
     public void configureFlutterEngine(FlutterEngine flutterEngine) {
         super.configureFlutterEngine(flutterEngine);
+
+        // Register NextPlayer Plugin
+        flutterEngine
+            .getPlatformViewsController()
+            .getRegistry()
+            .registerViewFactory("nextplayer_view", new NextPlayerPlugin(flutterEngine.getDartExecutor().getBinaryMessenger()));
 
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), CHANNEL)
             .setMethodCallHandler((call, result) -> {

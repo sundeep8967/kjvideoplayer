@@ -71,7 +71,7 @@ class _CustomVideoPlayerState extends State<CustomVideoPlayer> {
 
     _vlcController = VlcPlayerController.file(
       File(widget.videoPath),
-      hwAcc: HwAcc.FULL,
+      hwAcc: HwAcc.auto,
       autoPlay: false, // We will call play explicitly via listener
       options: VlcPlayerOptions(
         // Example options (refer to VLC documentation for more)
