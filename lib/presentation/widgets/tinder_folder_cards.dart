@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import 'dart:async';
+import 'dart:io';
 import '../../data/models/video_model.dart';
+import '../../data/services/thumbnail_service.dart';
 import '../../core/utils/haptic_feedback_helper.dart';
 import 'ios_folder_card.dart';
 
@@ -164,11 +167,11 @@ class _TinderFolderCardsState extends State<TinderFolderCards>
                         child: Stack(
                           fit: StackFit.expand,
                           children: [
-                            IOSFolderCard(
-                              folderName: folderName,
-                              videoCount: videos.length,
-                              videos: videos,
-                              onTap: () => widget.onFolderTap(folderName),
+                            // Just show the cycling thumbnail without folder info
+                            Container(
+                              width: double.infinity,
+                              height: double.infinity,
+                              child: _buildFolderThumbnail(videos),
                             ),
                             
                             // Folder info overlay
@@ -312,6 +315,225 @@ class _TinderFolderCardsState extends State<TinderFolderCards>
           textAlign: TextAlign.center,
         ),
       ],
+    );
+  }
+
+  Widget _buildFolderThumbnail(List<VideoModel> videos) {
+    if (videos.isEmpty) {
+      return Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF007AFF),
+              Color(0xFF0051D5),
+            ],
+          ),
+        ),
+        child: const Center(
+          child: Icon(
+            Icons.folder,
+            size: 64,
+            color: Colors.white,
+          ),
+        ),
+      );
+    }
+
+    // Show cycling thumbnail similar to folder card but without UI elements
+    return TinderFolderThumbnail(videos: videos);
+  }
+}
+
+class TinderFolderThumbnail extends StatefulWidget {
+  final List<VideoModel> videos;
+
+  const TinderFolderThumbnail({
+    super.key,
+    required this.videos,
+  });
+
+  @override
+  State<TinderFolderThumbnail> createState() => _TinderFolderThumbnailState();
+}
+
+class _TinderFolderThumbnailState extends State<TinderFolderThumbnail>
+    with TickerProviderStateMixin {
+  final ThumbnailService _thumbnailService = ThumbnailService();
+  List<String?> _thumbnailPaths = [];
+  bool _isLoadingThumbnails = false;
+  
+  late AnimationController _cycleController;
+  late Animation<double> _fadeAnimation;
+  Timer? _cycleTimer;
+  int _currentThumbnailIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeAnimations();
+    _loadFolderThumbnails();
+  }
+
+  void _initializeAnimations() {
+    _cycleController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _cycleController,
+      curve: Curves.easeInOut,
+    ));
+  }
+
+  Future<void> _loadFolderThumbnails() async {
+    if (widget.videos.isEmpty) return;
+    
+    setState(() {
+      _isLoadingThumbnails = true;
+    });
+
+    List<String?> thumbnails = [];
+
+    for (final video in widget.videos) {
+      try {
+        final thumbnailPath = await _thumbnailService.generateThumbnail(video.path);
+        thumbnails.add(thumbnailPath);
+      } catch (e) {
+        thumbnails.add(null);
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _thumbnailPaths = thumbnails;
+        _isLoadingThumbnails = false;
+      });
+      
+      if (_thumbnailPaths.isNotEmpty) {
+        _startThumbnailCycling();
+      }
+    }
+  }
+
+  void _startThumbnailCycling() {
+    if (widget.videos.length <= 1) return;
+    
+    _cycleController.forward();
+    
+    _cycleTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      setState(() {
+        _currentThumbnailIndex = (_currentThumbnailIndex + 1) % _thumbnailPaths.length;
+      });
+      
+      _cycleController.reset();
+      _cycleController.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _cycleTimer?.cancel();
+    _cycleController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoadingThumbnails) {
+      return Container(
+        color: const Color(0xFFF2F2F7),
+        child: const Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF007AFF)),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_thumbnailPaths.isEmpty) {
+      return Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF007AFF),
+              Color(0xFF0051D5),
+            ],
+          ),
+        ),
+        child: const Center(
+          child: Icon(
+            Icons.folder,
+            size: 64,
+            color: Colors.white,
+          ),
+        ),
+      );
+    }
+
+    return AnimatedBuilder(
+      animation: _fadeAnimation,
+      builder: (context, child) {
+        return Opacity(
+          opacity: _fadeAnimation.value,
+          child: Container(
+            width: double.infinity,
+            height: double.infinity,
+            child: _thumbnailPaths[_currentThumbnailIndex] != null
+                ? Image.file(
+                    File(_thumbnailPaths[_currentThumbnailIndex]!),
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Color(0xFF007AFF), Color(0xFF0051D5)],
+                          ),
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.folder,
+                            size: 64,
+                            color: Colors.white,
+                          ),
+                        ),
+                      );
+                    },
+                  )
+                : Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF007AFF), Color(0xFF0051D5)],
+                      ),
+                    ),
+                    child: const Center(
+                      child: Icon(
+                        Icons.folder,
+                        size: 64,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+          ),
+        );
+      },
     );
   }
 }
