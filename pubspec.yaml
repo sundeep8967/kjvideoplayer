@@ -1,5 +1,5 @@
-name: flutterapp7
-description: "A new Flutter project."
+name: kjvideoplayer
+description: "Modern Video Player - A sleek video player app with advanced features."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -40,12 +40,10 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   isolate_handler: ^1.0.2
-  device_apps: ^2.2.0
   open_file: ^3.5.10
   intl: ^0.20.1
   fluttertoast: ^8.2.10
   path: ^1.9.0
-  device_info: ^2.0.3
   mime_type: ^1.0.1
   percent_indicator: ^4.2.4
   provider: ^6.1.2
@@ -55,6 +53,7 @@ dependencies:
   device_info_plus: ^11.2.0
   perfect_volume_control: ^1.0.5
   flutter_vlc_player: ^7.4.2
+  google_fonts: ^6.2.1
 
    
  
