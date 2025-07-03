@@ -38,6 +38,17 @@ class _IOSVideoThumbnailState extends State<IOSVideoThumbnail> {
   }
 
   Future<void> _loadThumbnail() async {
+    // Check if video file exists first
+    if (!widget.video.exists) {
+      if (mounted) {
+        setState(() {
+          _isLoadingThumbnail = false;
+          _thumbnailPath = null;
+        });
+      }
+      return;
+    }
+
     // Check if thumbnail already exists
     final cachedThumbnail = _thumbnailService.getCachedThumbnail(widget.video.path);
     if (cachedThumbnail != null && await File(cachedThumbnail).exists()) {
@@ -49,19 +60,29 @@ class _IOSVideoThumbnailState extends State<IOSVideoThumbnail> {
       return;
     }
 
-    // Generate new thumbnail
+    // Generate new thumbnail with error handling
     if (!_isLoadingThumbnail) {
       setState(() {
         _isLoadingThumbnail = true;
       });
 
-      final thumbnailPath = await _thumbnailService.generateThumbnail(widget.video.path);
-      
-      if (mounted) {
-        setState(() {
-          _thumbnailPath = thumbnailPath;
-          _isLoadingThumbnail = false;
-        });
+      try {
+        final thumbnailPath = await _thumbnailService.generateThumbnail(widget.video.path);
+        
+        if (mounted) {
+          setState(() {
+            _thumbnailPath = thumbnailPath;
+            _isLoadingThumbnail = false;
+          });
+        }
+      } catch (e) {
+        // Handle corrupted or incomplete video files
+        if (mounted) {
+          setState(() {
+            _thumbnailPath = null;
+            _isLoadingThumbnail = false;
+          });
+        }
       }
     }
   }
@@ -206,6 +227,11 @@ class _IOSVideoThumbnailState extends State<IOSVideoThumbnail> {
   }
 
   Widget _buildThumbnailContent() {
+    // Check if video file doesn't exist
+    if (!widget.video.exists) {
+      return _buildErrorThumbnail('File Not Found', Icons.file_present);
+    }
+
     if (_isLoadingThumbnail) {
       return Container(
         color: const Color(0xFFF2F2F7),
@@ -230,7 +256,7 @@ class _IOSVideoThumbnailState extends State<IOSVideoThumbnail> {
             File(_thumbnailPath!),
             fit: BoxFit.cover,
             errorBuilder: (context, error, stackTrace) {
-              return _buildDefaultThumbnail();
+              return _buildErrorThumbnail('Corrupted File', Icons.broken_image);
             },
           ),
           // Play button overlay
@@ -247,6 +273,11 @@ class _IOSVideoThumbnailState extends State<IOSVideoThumbnail> {
           ),
         ],
       );
+    }
+
+    // Check file size to detect incomplete downloads
+    if (widget.video.size < 1024) { // Less than 1KB likely incomplete
+      return _buildErrorThumbnail('Incomplete Download', Icons.download);
     }
 
     return _buildDefaultThumbnail();
@@ -270,6 +301,41 @@ class _IOSVideoThumbnailState extends State<IOSVideoThumbnail> {
           size: 48,
           color: Colors.white,
         ),
+      ),
+    );
+  }
+
+  Widget _buildErrorThumbnail(String errorText, IconData icon) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.red[300]!,
+            Colors.red[600]!,
+          ],
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: 32,
+            color: Colors.white,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            errorText,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
       ),
     );
   }

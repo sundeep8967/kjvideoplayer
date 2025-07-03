@@ -4,12 +4,14 @@ import 'package:flutter/services.dart';
 import 'package:file_manager/file_manager.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../data/services/storage_service.dart';
 import '../../../data/models/video_model.dart';
 import '../../../core/utils/system_ui_helper.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../widgets/ios_video_thumbnail.dart';
 import '../../widgets/ios_folder_card.dart';
+import '../../widgets/video_list_thumbnail.dart';
 import '../../widgets/tinder_video_cards.dart';
 import '../../widgets/tinder_folder_cards.dart';
 import '../video_player/video_player_screen.dart';
@@ -67,6 +69,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     SystemUIHelper.initializeSystemUI();
     
     _initializeAnimations();
+    _loadSavedViewMode();
     _checkAndRequestStoragePermission();
     _loadRecentFiles();
     _loadAllVideos();
@@ -316,6 +319,28 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     setState(() {
       _viewMode = (_viewMode + 1) % 3; // Cycle through 0, 1, 2
     });
+    _saveViewMode();
+  }
+
+  Future<void> _loadSavedViewMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedViewMode = prefs.getInt('view_mode') ?? 0; // Default to Grid
+      setState(() {
+        _viewMode = savedViewMode;
+      });
+    } catch (e) {
+      print('Error loading view mode: $e');
+    }
+  }
+
+  Future<void> _saveViewMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('view_mode', _viewMode);
+    } catch (e) {
+      print('Error saving view mode: $e');
+    }
   }
 
   void _addToFavorites(VideoModel video) {
@@ -456,21 +481,24 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                         ),
                       ),
                       // View toggle button
-                      GestureDetector(
-                        onTap: () {
-                          HapticFeedbackHelper.selectionClick();
-                          _toggleViewMode();
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: iosLightGray,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Icon(
-                            _getViewModeIcon(),
-                            size: 20,
-                            color: iosBlue,
+                      Tooltip(
+                        message: _getViewModeTooltip(),
+                        child: GestureDetector(
+                          onTap: () {
+                            HapticFeedbackHelper.selectionClick();
+                            _toggleViewMode();
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: iosLightGray,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              _getViewModeIcon(),
+                              size: 20,
+                              color: iosBlue,
+                            ),
                           ),
                         ),
                       ),
@@ -786,7 +814,10 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
       itemCount: videos.length,
       itemBuilder: (context, index) {
         final video = videos[index];
+        
+        // Lazy loading - only load thumbnails for visible items
         return IOSVideoThumbnail(
+          key: ValueKey(video.path), // Ensure proper widget recycling
           video: video,
           onTap: () => _playVideo(video.path, video.displayName),
           onFavorite: () => _addToFavorites(video),
@@ -818,20 +849,9 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
           ),
           child: ListTile(
             contentPadding: const EdgeInsets.all(12),
-            leading: Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF007AFF), Color(0xFF0051D5)],
-                ),
-              ),
-              child: const Icon(
-                Icons.play_circle_fill,
-                color: Colors.white,
-                size: 24,
-              ),
+            leading: VideoListThumbnail(
+              video: video,
+              size: 60,
             ),
             title: Text(
               video.displayName,
@@ -865,11 +885,14 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                     ),
                     const SizedBox(width: 8),
                   ],
-                  Text(
-                    video.formattedSize,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF8E8E93),
+                  Expanded(
+                    child: Text(
+                      video.formattedSize,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF8E8E93),
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -1036,6 +1059,15 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
       case 1: return Icons.style; // List -> Cards
       case 2: return Icons.grid_view; // Cards -> Grid
       default: return Icons.grid_view;
+    }
+  }
+
+  String _getViewModeTooltip() {
+    switch (_viewMode) {
+      case 0: return 'Switch to List View';
+      case 1: return 'Switch to Card View';
+      case 2: return 'Switch to Grid View';
+      default: return 'Switch View';
     }
   }
 
