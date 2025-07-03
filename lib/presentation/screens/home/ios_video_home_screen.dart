@@ -10,6 +10,8 @@ import '../../../core/utils/system_ui_helper.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../widgets/ios_video_thumbnail.dart';
 import '../../widgets/ios_folder_card.dart';
+import '../../widgets/tinder_video_cards.dart';
+import '../../widgets/tinder_folder_cards.dart';
 import '../video_player/video_player_screen.dart';
 import '../../animations/ios_page_transitions.dart';
 import '../../../core/utils/haptic_feedback_helper.dart';
@@ -35,7 +37,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
   int _selectedTabIndex = 0; // 0 = Folders, 1 = All Videos, 2 = Recent
   
   // Search and view functionality
-  bool _isGridView = true;
+  int _viewMode = 0; // 0 = Grid, 1 = List, 2 = Tinder Cards
   bool _isSearching = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
@@ -312,7 +314,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
 
   void _toggleViewMode() {
     setState(() {
-      _isGridView = !_isGridView;
+      _viewMode = (_viewMode + 1) % 3; // Cycle through 0, 1, 2
     });
   }
 
@@ -466,7 +468,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Icon(
-                            _isGridView ? Icons.view_list : Icons.grid_view,
+                            _getViewModeIcon(),
                             size: 20,
                             color: iosBlue,
                           ),
@@ -768,7 +770,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
       color: const Color(0xFF007AFF),
       backgroundColor: Colors.white,
       strokeWidth: 2.5,
-      child: _isGridView ? _buildVideoGridView(videosToShow) : _buildVideoListView(videosToShow),
+      child: _buildVideoView(videosToShow),
     );
   }
 
@@ -928,7 +930,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
       color: const Color(0xFF007AFF),
       backgroundColor: Colors.white,
       strokeWidth: 2.5,
-      child: _isGridView ? _buildFolderGridView(foldersToShow) : _buildFolderListView(foldersToShow),
+      child: _buildFolderView(foldersToShow),
     );
   }
 
@@ -1025,6 +1027,101 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
           ),
         );
       },
+    );
+  }
+
+  IconData _getViewModeIcon() {
+    switch (_viewMode) {
+      case 0: return Icons.view_list; // Grid -> List
+      case 1: return Icons.style; // List -> Cards
+      case 2: return Icons.grid_view; // Cards -> Grid
+      default: return Icons.grid_view;
+    }
+  }
+
+  Widget _buildVideoView(List<VideoModel> videos) {
+    switch (_viewMode) {
+      case 0: return _buildVideoGridView(videos);
+      case 1: return _buildVideoListView(videos);
+      case 2: return _buildVideoTinderView(videos);
+      default: return _buildVideoGridView(videos);
+    }
+  }
+
+  Widget _buildFolderView(List<String> folders) {
+    switch (_viewMode) {
+      case 0: return _buildFolderGridView(folders);
+      case 1: return _buildFolderListView(folders);
+      case 2: return _buildFolderTinderView(folders);
+      default: return _buildFolderGridView(folders);
+    }
+  }
+
+  Widget _buildVideoTinderView(List<VideoModel> videos) {
+    if (videos.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              _searchQuery.isNotEmpty ? Icons.search_off : Icons.video_library_outlined,
+              size: 64,
+              color: iosGray,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _searchQuery.isNotEmpty ? 'No videos found for "$_searchQuery"' : 'No videos found',
+              style: TextStyle(
+                fontSize: 18,
+                color: iosSecondaryLabel,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return TinderVideoCards(
+      videos: videos,
+      onVideoTap: (video) => _playVideo(video.path, video.displayName),
+      onFavorite: _addToFavorites,
+      onShare: _shareVideo,
+      onDelete: _deleteVideo,
+    );
+  }
+
+  Widget _buildFolderTinderView(List<String> folders) {
+    if (folders.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              _searchQuery.isNotEmpty ? Icons.search_off : Icons.folder_outlined,
+              size: 64,
+              color: iosGray,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _searchQuery.isNotEmpty ? 'No folders found for "$_searchQuery"' : 'No folders found',
+              style: TextStyle(
+                fontSize: 18,
+                color: iosSecondaryLabel,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return TinderFolderCards(
+      folders: folders,
+      folderVideos: _folderVideos,
+      onFolderTap: _navigateToFolder,
     );
   }
 }
