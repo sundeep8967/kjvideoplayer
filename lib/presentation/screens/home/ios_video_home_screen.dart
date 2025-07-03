@@ -948,6 +948,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
         return IOSFolderCard(
           folderName: folderName,
           videoCount: videoCount,
+          videos: _folderVideos[folderName] ?? [],
           onTap: () => _navigateToFolder(folderName),
         );
       },
