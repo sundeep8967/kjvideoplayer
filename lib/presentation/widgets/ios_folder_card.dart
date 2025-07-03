@@ -1,21 +1,55 @@
 import 'package:flutter/material.dart';
+import '../../core/utils/haptic_feedback_helper.dart';
+import 'ios_context_menu.dart';
+import 'ios_action_sheet.dart';
 
 class IOSFolderCard extends StatelessWidget {
   final String folderName;
   final int videoCount;
   final VoidCallback onTap;
+  final VoidCallback? onFavorite;
+  final VoidCallback? onShare;
 
   const IOSFolderCard({
     super.key,
     required this.folderName,
     required this.videoCount,
     required this.onTap,
+    this.onFavorite,
+    this.onShare,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
+    return IOSContextMenu(
+      onTap: () {
+        HapticFeedbackHelper.lightImpact();
+        onTap();
+      },
+      actions: [
+        IOSContextMenuAction(
+          title: 'Open Folder',
+          icon: Icons.folder_open,
+          onPressed: onTap,
+        ),
+        if (onFavorite != null)
+          IOSContextMenuAction(
+            title: 'Add to Favorites',
+            icon: Icons.favorite_outline,
+            onPressed: onFavorite!,
+          ),
+        if (onShare != null)
+          IOSContextMenuAction(
+            title: 'Share Folder',
+            icon: Icons.share,
+            onPressed: onShare!,
+          ),
+        IOSContextMenuAction(
+          title: 'Folder Info',
+          icon: Icons.info_outline,
+          onPressed: () => _showFolderInfo(context),
+        ),
+      ],
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -104,6 +138,24 @@ class IOSFolderCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  void _showFolderInfo(BuildContext context) {
+    IOSActionSheet.show(
+      context: context,
+      title: folderName,
+      message: 'Folder Information',
+      actions: [
+        IOSActionSheetAction(
+          title: 'Videos: $videoCount',
+          onPressed: () {},
+        ),
+        IOSActionSheetAction(
+          title: 'Folder Name: $folderName',
+          onPressed: () {},
+        ),
+      ],
     );
   }
 }

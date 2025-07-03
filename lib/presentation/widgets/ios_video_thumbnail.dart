@@ -2,15 +2,24 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import '../../data/models/video_model.dart';
 import '../../data/services/thumbnail_service.dart';
+import '../../core/utils/haptic_feedback_helper.dart';
+import 'ios_context_menu.dart';
+import 'ios_action_sheet.dart';
 
 class IOSVideoThumbnail extends StatefulWidget {
   final VideoModel video;
   final VoidCallback onTap;
+  final VoidCallback? onFavorite;
+  final VoidCallback? onDelete;
+  final VoidCallback? onShare;
 
   const IOSVideoThumbnail({
     super.key,
     required this.video,
     required this.onTap,
+    this.onFavorite,
+    this.onDelete,
+    this.onShare,
   });
 
   @override
@@ -59,8 +68,42 @@ class _IOSVideoThumbnailState extends State<IOSVideoThumbnail> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: widget.onTap,
+    return IOSContextMenu(
+      onTap: () {
+        HapticFeedbackHelper.lightImpact();
+        widget.onTap();
+      },
+      actions: [
+        IOSContextMenuAction(
+          title: 'Play',
+          icon: Icons.play_arrow,
+          onPressed: widget.onTap,
+        ),
+        if (widget.onFavorite != null)
+          IOSContextMenuAction(
+            title: 'Add to Favorites',
+            icon: Icons.favorite_outline,
+            onPressed: widget.onFavorite!,
+          ),
+        if (widget.onShare != null)
+          IOSContextMenuAction(
+            title: 'Share',
+            icon: Icons.share,
+            onPressed: widget.onShare!,
+          ),
+        IOSContextMenuAction(
+          title: 'Show Info',
+          icon: Icons.info_outline,
+          onPressed: () => _showVideoInfo(context),
+        ),
+        if (widget.onDelete != null)
+          IOSContextMenuAction(
+            title: 'Delete',
+            icon: Icons.delete_outline,
+            onPressed: () => _confirmDelete(context),
+            isDestructive: true,
+          ),
+      ],
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -229,5 +272,54 @@ class _IOSVideoThumbnailState extends State<IOSVideoThumbnail> {
         ),
       ),
     );
+  }
+
+  void _showVideoInfo(BuildContext context) {
+    IOSActionSheet.show(
+      context: context,
+      title: widget.video.displayName,
+      message: 'Video Information',
+      actions: [
+        IOSActionSheetAction(
+          title: 'Size: ${widget.video.formattedSize}',
+          onPressed: () {},
+        ),
+        if (widget.video.duration != null)
+          IOSActionSheetAction(
+            title: 'Duration: ${widget.video.formattedDuration}',
+            onPressed: () {},
+          ),
+        IOSActionSheetAction(
+          title: 'Modified: ${_formatDate(widget.video.dateModified)}',
+          onPressed: () {},
+        ),
+        IOSActionSheetAction(
+          title: 'Path: ${widget.video.path}',
+          onPressed: () {},
+        ),
+      ],
+    );
+  }
+
+  void _confirmDelete(BuildContext context) {
+    IOSActionSheet.show(
+      context: context,
+      title: 'Delete Video',
+      message: 'Are you sure you want to delete "${widget.video.displayName}"? This action cannot be undone.',
+      actions: [
+        IOSActionSheetAction(
+          title: 'Delete',
+          onPressed: () {
+            HapticFeedbackHelper.error();
+            widget.onDelete?.call();
+          },
+          isDestructive: true,
+        ),
+      ],
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
   }
 }

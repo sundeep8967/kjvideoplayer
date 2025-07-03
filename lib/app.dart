@@ -11,7 +11,7 @@ class IPlayerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'I Player',
+      title: 'i Player',
       theme: AppTheme.lightTheme,
       //darkTheme: AppTheme.darkTheme,
       //themeMode: ThemeMode.system,

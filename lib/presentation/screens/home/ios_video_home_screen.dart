@@ -11,7 +11,8 @@ import '../../../core/constants/app_constants.dart';
 import '../../widgets/ios_video_thumbnail.dart';
 import '../../widgets/ios_folder_card.dart';
 import '../video_player/video_player_screen.dart';
-import '../../animations/slide_transition.dart';
+import '../../animations/ios_page_transitions.dart';
+import '../../../core/utils/haptic_feedback_helper.dart';
 import 'ios_folder_screen.dart';
 
 class IOSVideoHomeScreen extends StatefulWidget {
@@ -31,7 +32,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
   List<VideoModel> _allVideos = [];
   Map<String, List<VideoModel>> _folderVideos = {};
   List<String> _folderNames = [];
-  int _selectedTabIndex = 0; // 0 = All Videos, 1 = Folders, 2 = Recent
+  int _selectedTabIndex = 0; // 0 = Folders, 1 = All Videos, 2 = Recent
   
   // Search and view functionality
   bool _isGridView = true;
@@ -315,11 +316,63 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     });
   }
 
+  void _addToFavorites(VideoModel video) {
+    HapticFeedbackHelper.success();
+    // TODO: Implement favorites functionality
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Added "${video.displayName}" to favorites'),
+        backgroundColor: const Color(0xFF007AFF),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  void _shareVideo(VideoModel video) {
+    HapticFeedbackHelper.lightImpact();
+    // TODO: Implement share functionality
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Sharing "${video.displayName}"'),
+        backgroundColor: const Color(0xFF007AFF),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  void _deleteVideo(VideoModel video) {
+    HapticFeedbackHelper.error();
+    setState(() {
+      _allVideos.removeWhere((v) => v.path == video.path);
+      _organizeFolders(_allVideos);
+      _updateFilteredContent();
+    });
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Deleted "${video.displayName}"'),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        action: SnackBarAction(
+          label: 'Undo',
+          textColor: Colors.white,
+          onPressed: () {
+            // TODO: Implement undo functionality
+            HapticFeedbackHelper.lightImpact();
+          },
+        ),
+      ),
+    );
+  }
+
   void _navigateToFolder(String folderName) {
     final folderVideos = _folderVideos[folderName] ?? [];
     Navigator.push(
       context,
-      CustomSlideTransition.createRoute(
+      IOSPageTransitions.slideFromRight(
         IOSFolderScreen(
           folderName: folderName,
           videos: folderVideos,
@@ -345,7 +398,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     if (mounted) {
       Navigator.push(
         context,
-        CustomSlideTransition.createRoute(
+        IOSPageTransitions.slideFromRight(
           VideoPlayerScreen(video: video),
         ),
       );
@@ -370,7 +423,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                     children: [
                       const Expanded(
                         child: Text(
-                          'I Player',
+                          'i Player',
                           style: TextStyle(
                             fontSize: 34,
                             fontWeight: FontWeight.bold,
@@ -382,7 +435,10 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                       Container(
                         margin: const EdgeInsets.only(right: 8),
                         child: GestureDetector(
-                          onTap: _toggleSearch,
+                          onTap: () {
+                            HapticFeedbackHelper.lightImpact();
+                            _toggleSearch();
+                          },
                           child: Container(
                             padding: const EdgeInsets.all(8),
                             decoration: BoxDecoration(
@@ -399,7 +455,10 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                       ),
                       // View toggle button
                       GestureDetector(
-                        onTap: _toggleViewMode,
+                        onTap: () {
+                          HapticFeedbackHelper.selectionClick();
+                          _toggleViewMode();
+                        },
                         child: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
@@ -478,8 +537,8 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                     ),
                     child: Row(
                       children: [
-                        _buildSegmentedControlItem('All Videos', 0),
-                        _buildSegmentedControlItem('Folders', 1),
+                        _buildSegmentedControlItem('Folders', 0),
+                        _buildSegmentedControlItem('All Videos', 1),
                         _buildSegmentedControlItem('Recent', 2),
                       ],
                     ),
@@ -506,6 +565,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     return Expanded(
       child: GestureDetector(
         onTap: () {
+          HapticFeedbackHelper.selectionClick();
           setState(() {
             _selectedTabIndex = index;
           });
@@ -638,7 +698,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
   }
 
   Widget _buildVideoGrid() {
-    if (_selectedTabIndex == 1) {
+    if (_selectedTabIndex == 0) {
       // Folders view
       return _buildFoldersGrid();
     }
@@ -646,7 +706,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     List<VideoModel> videosToShow;
     
     switch (_selectedTabIndex) {
-      case 0: // All Videos
+      case 1: // All Videos
         videosToShow = _filteredVideos;
         break;
       case 2: // Recent
@@ -700,7 +760,14 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     }
     
     return RefreshIndicator(
-      onRefresh: _loadAllVideos,
+      onRefresh: () async {
+        HapticFeedbackHelper.lightImpact();
+        await _loadAllVideos();
+        HapticFeedbackHelper.success();
+      },
+      color: const Color(0xFF007AFF),
+      backgroundColor: Colors.white,
+      strokeWidth: 2.5,
       child: _isGridView ? _buildVideoGridView(videosToShow) : _buildVideoListView(videosToShow),
     );
   }
@@ -720,6 +787,9 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
         return IOSVideoThumbnail(
           video: video,
           onTap: () => _playVideo(video.path, video.displayName),
+          onFavorite: () => _addToFavorites(video),
+          onShare: () => _shareVideo(video),
+          onDelete: () => _deleteVideo(video),
         );
       },
     );
@@ -850,7 +920,14 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     }
     
     return RefreshIndicator(
-      onRefresh: _loadAllVideos,
+      onRefresh: () async {
+        HapticFeedbackHelper.lightImpact();
+        await _loadAllVideos();
+        HapticFeedbackHelper.success();
+      },
+      color: const Color(0xFF007AFF),
+      backgroundColor: Colors.white,
+      strokeWidth: 2.5,
       child: _isGridView ? _buildFolderGridView(foldersToShow) : _buildFolderListView(foldersToShow),
     );
   }

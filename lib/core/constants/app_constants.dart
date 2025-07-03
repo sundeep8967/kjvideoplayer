@@ -1,6 +1,6 @@
 class AppConstants {
   // App Info
-  static const String appName = 'I Player';
+  static const String appName = 'i Player';
   static const String appVersion = '1.0.0';
   
   // Video Extensions

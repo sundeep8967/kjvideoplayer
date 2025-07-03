@@ -1,5 +1,5 @@
 name: iplayer
-description: "I Player - A sleek video player app with advanced features."
+description: "i Player - A sleek video player app with advanced features."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
