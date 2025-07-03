@@ -10,7 +10,7 @@ void main() {
   // Initialize system UI
   SystemUIHelper.initializeSystemUI();
   
-  runApp(const KJVideoPlayerApp());
+  runApp(const IPlayerApp());
 }
 
 

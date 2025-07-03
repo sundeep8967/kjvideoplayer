@@ -9,8 +9,10 @@ import '../../../data/models/video_model.dart';
 import '../../../core/utils/system_ui_helper.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../widgets/ios_video_thumbnail.dart';
+import '../../widgets/ios_folder_card.dart';
 import '../video_player/video_player_screen.dart';
 import '../../animations/slide_transition.dart';
+import 'ios_folder_screen.dart';
 
 class IOSVideoHomeScreen extends StatefulWidget {
   const IOSVideoHomeScreen({super.key});
@@ -27,7 +29,17 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
   final List<String> videoExtensions = ['.mp4', '.mkv', '.avi', '.mov', '.wmv'];
   List<String> _recentFiles = [];
   List<VideoModel> _allVideos = [];
+  Map<String, List<VideoModel>> _folderVideos = {};
+  List<String> _folderNames = [];
   int _selectedTabIndex = 0; // 0 = All Videos, 1 = Folders, 2 = Recent
+  
+  // Search and view functionality
+  bool _isGridView = true;
+  bool _isSearching = false;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+  List<VideoModel> _filteredVideos = [];
+  List<String> _filteredFolders = [];
   
   late AnimationController _animationController;
   late AnimationController _tabAnimationController;
@@ -90,6 +102,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     WidgetsBinding.instance.removeObserver(this);
     _animationController.dispose();
     _tabAnimationController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -212,6 +225,8 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
       
       setState(() {
         _allVideos = videos;
+        _organizeFolders(videos);
+        _updateFilteredContent();
       });
     } catch (e) {
       print('Error loading videos: $e');
@@ -227,6 +242,91 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     final fileName = path.split('/').last;
     final nameWithoutExtension = fileName.split('.').first;
     return nameWithoutExtension.replaceAll('_', ' ').replaceAll('-', ' ');
+  }
+
+  void _organizeFolders(List<VideoModel> videos) {
+    _folderVideos.clear();
+    _folderNames.clear();
+    
+    for (final video in videos) {
+      final folderPath = video.path.substring(0, video.path.lastIndexOf('/'));
+      final folderName = folderPath.split('/').last;
+      
+      if (!_folderVideos.containsKey(folderName)) {
+        _folderVideos[folderName] = [];
+        _folderNames.add(folderName);
+      }
+      _folderVideos[folderName]!.add(video);
+    }
+    
+    // Sort folders by name
+    _folderNames.sort();
+  }
+
+  void _updateFilteredContent() {
+    if (_searchQuery.isEmpty) {
+      _filteredVideos = _allVideos;
+      _filteredFolders = _folderNames;
+    } else {
+      // Filter videos by name
+      _filteredVideos = _allVideos.where((video) {
+        return video.displayName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+               video.name.toLowerCase().contains(_searchQuery.toLowerCase());
+      }).toList();
+      
+      // Filter folders by name or if they contain matching videos
+      _filteredFolders = _folderNames.where((folderName) {
+        // Check folder name
+        if (folderName.toLowerCase().contains(_searchQuery.toLowerCase())) {
+          return true;
+        }
+        
+        // Check if folder contains matching videos
+        final folderVideos = _folderVideos[folderName] ?? [];
+        return folderVideos.any((video) =>
+          video.displayName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          video.name.toLowerCase().contains(_searchQuery.toLowerCase())
+        );
+      }).toList();
+    }
+  }
+
+  void _onSearchChanged(String query) {
+    setState(() {
+      _searchQuery = query;
+      _updateFilteredContent();
+    });
+  }
+
+  void _toggleSearch() {
+    setState(() {
+      _isSearching = !_isSearching;
+      if (!_isSearching) {
+        _searchController.clear();
+        _searchQuery = '';
+        _updateFilteredContent();
+      }
+    });
+  }
+
+  void _toggleViewMode() {
+    setState(() {
+      _isGridView = !_isGridView;
+    });
+  }
+
+  void _navigateToFolder(String folderName) {
+    final folderVideos = _folderVideos[folderName] ?? [];
+    Navigator.push(
+      context,
+      CustomSlideTransition.createRoute(
+        IOSFolderScreen(
+          folderName: folderName,
+          videos: folderVideos,
+          onVideoTap: _playVideo,
+        ),
+      ),
+    );
   }
 
   void _playVideo(String videoPath, String videoTitle) async {
@@ -265,16 +365,110 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Large title
-                  const Text(
-                    'KJ Video Player',
-                    style: TextStyle(
-                      fontSize: 34,
-                      fontWeight: FontWeight.bold,
-                      color: iosLabel,
-                    ),
+                  // Title and action buttons
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'I Player',
+                          style: TextStyle(
+                            fontSize: 34,
+                            fontWeight: FontWeight.bold,
+                            color: iosLabel,
+                          ),
+                        ),
+                      ),
+                      // Search button
+                      Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        child: GestureDetector(
+                          onTap: _toggleSearch,
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: _isSearching ? iosBlue : iosLightGray,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(
+                              Icons.search,
+                              size: 20,
+                              color: _isSearching ? Colors.white : iosBlue,
+                            ),
+                          ),
+                        ),
+                      ),
+                      // View toggle button
+                      GestureDetector(
+                        onTap: _toggleViewMode,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: iosLightGray,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            _isGridView ? Icons.view_list : Icons.grid_view,
+                            size: 20,
+                            color: iosBlue,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
+                  
                   const SizedBox(height: 20),
+                  
+                  // Search bar (if searching)
+                  if (_isSearching) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: iosLightGray,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.search,
+                            color: iosGray,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              onChanged: _onSearchChanged,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                color: iosLabel,
+                              ),
+                              decoration: const InputDecoration(
+                                hintText: 'Search videos and folders...',
+                                hintStyle: TextStyle(
+                                  color: iosGray,
+                                  fontSize: 16,
+                                ),
+                                border: InputBorder.none,
+                              ),
+                            ),
+                          ),
+                          if (_searchQuery.isNotEmpty)
+                            GestureDetector(
+                              onTap: () {
+                                _searchController.clear();
+                                _onSearchChanged('');
+                              },
+                              child: const Icon(
+                                Icons.clear,
+                                color: iosGray,
+                                size: 20,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   
                   // iOS-style segmented control
                   Container(
@@ -444,21 +638,29 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
   }
 
   Widget _buildVideoGrid() {
+    if (_selectedTabIndex == 1) {
+      // Folders view
+      return _buildFoldersGrid();
+    }
+    
     List<VideoModel> videosToShow;
     
     switch (_selectedTabIndex) {
       case 0: // All Videos
-        videosToShow = _allVideos;
-        break;
-      case 1: // Folders (placeholder)
-        videosToShow = _allVideos;
+        videosToShow = _filteredVideos;
         break;
       case 2: // Recent
-        videosToShow = _allVideos.where((video) => 
+        final recentVideos = _allVideos.where((video) => 
           _recentFiles.contains(video.path)).toList();
+        videosToShow = _searchQuery.isEmpty 
+          ? recentVideos 
+          : recentVideos.where((video) =>
+              video.displayName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+              video.name.toLowerCase().contains(_searchQuery.toLowerCase())
+            ).toList();
         break;
       default:
-        videosToShow = _allVideos;
+        videosToShow = _filteredVideos;
     }
     
     if (videosToShow.isEmpty) {
@@ -467,22 +669,25 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.video_library_outlined,
+              _searchQuery.isNotEmpty ? Icons.search_off : Icons.video_library_outlined,
               size: 64,
               color: iosGray,
             ),
             const SizedBox(height: 16),
             Text(
-              'No videos found',
+              _searchQuery.isNotEmpty ? 'No videos found for "$_searchQuery"' : 'No videos found',
               style: TextStyle(
                 fontSize: 18,
                 color: iosSecondaryLabel,
                 fontWeight: FontWeight.w500,
               ),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              'Pull down to refresh and scan for videos',
+              _searchQuery.isNotEmpty 
+                ? 'Try a different search term'
+                : 'Pull down to refresh and scan for videos',
               style: TextStyle(
                 fontSize: 14,
                 color: iosGray,
@@ -496,23 +701,252 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     
     return RefreshIndicator(
       onRefresh: _loadAllVideos,
-      child: GridView.builder(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          childAspectRatio: 0.75,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-        ),
-        itemCount: videosToShow.length,
-        itemBuilder: (context, index) {
-          final video = videosToShow[index];
-          return IOSVideoThumbnail(
-            video: video,
-            onTap: () => _playVideo(video.path, video.displayName),
-          );
-        },
+      child: _isGridView ? _buildVideoGridView(videosToShow) : _buildVideoListView(videosToShow),
+    );
+  }
+
+  Widget _buildVideoGridView(List<VideoModel> videos) {
+    return GridView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 0.75,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
       ),
+      itemCount: videos.length,
+      itemBuilder: (context, index) {
+        final video = videos[index];
+        return IOSVideoThumbnail(
+          video: video,
+          onTap: () => _playVideo(video.path, video.displayName),
+        );
+      },
+    );
+  }
+
+  Widget _buildVideoListView(List<VideoModel> videos) {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      itemCount: videos.length,
+      itemBuilder: (context, index) {
+        final video = videos[index];
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(12),
+            leading: Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF007AFF), Color(0xFF0051D5)],
+                ),
+              ),
+              child: const Icon(
+                Icons.play_circle_fill,
+                color: Colors.white,
+                size: 24,
+              ),
+            ),
+            title: Text(
+              video.displayName,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
+                color: Color(0xFF000000),
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                children: [
+                  if (video.duration != null) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF007AFF),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        video.formattedDuration,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(
+                    video.formattedSize,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF8E8E93),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            onTap: () => _playVideo(video.path, video.displayName),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFoldersGrid() {
+    final foldersToShow = _filteredFolders;
+    
+    if (foldersToShow.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              _searchQuery.isNotEmpty ? Icons.search_off : Icons.folder_outlined,
+              size: 64,
+              color: iosGray,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _searchQuery.isNotEmpty ? 'No folders found for "$_searchQuery"' : 'No folders found',
+              style: TextStyle(
+                fontSize: 18,
+                color: iosSecondaryLabel,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _searchQuery.isNotEmpty 
+                ? 'Try a different search term'
+                : 'Videos will be organized into folders automatically',
+              style: TextStyle(
+                fontSize: 14,
+                color: iosGray,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return RefreshIndicator(
+      onRefresh: _loadAllVideos,
+      child: _isGridView ? _buildFolderGridView(foldersToShow) : _buildFolderListView(foldersToShow),
+    );
+  }
+
+  Widget _buildFolderGridView(List<String> folders) {
+    return GridView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 1.0,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+      ),
+      itemCount: folders.length,
+      itemBuilder: (context, index) {
+        final folderName = folders[index];
+        final videoCount = _folderVideos[folderName]?.length ?? 0;
+        return IOSFolderCard(
+          folderName: folderName,
+          videoCount: videoCount,
+          onTap: () => _navigateToFolder(folderName),
+        );
+      },
+    );
+  }
+
+  Widget _buildFolderListView(List<String> folders) {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      itemCount: folders.length,
+      itemBuilder: (context, index) {
+        final folderName = folders[index];
+        final videoCount = _folderVideos[folderName]?.length ?? 0;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.08),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(16),
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF007AFF).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(
+                Icons.folder,
+                color: Color(0xFF007AFF),
+                size: 24,
+              ),
+            ),
+            title: Text(
+              folderName,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
+                color: Color(0xFF000000),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(
+              '$videoCount video${videoCount == 1 ? '' : 's'}',
+              style: const TextStyle(
+                fontSize: 14,
+                color: Color(0xFF8E8E93),
+              ),
+            ),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF007AFF),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '$videoCount',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            onTap: () => _navigateToFolder(folderName),
+          ),
+        );
+      },
     );
   }
 }

@@ -37,7 +37,7 @@ class PermissionRequestWidget extends StatelessWidget {
             const SizedBox(height: AppConstants.defaultPadding),
             
             Text(
-              'KJ Video Player needs access to your device storage to find and play video files.',
+              'I Player needs access to your device storage to find and play video files.',
               style: TextStyle(
                 fontSize: 16,
                 color: Colors.grey[600],
