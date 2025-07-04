@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import '../../data/models/video_model.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/platform/nextplayer_launcher.dart';
 
 class VideoCard extends StatelessWidget {
   final VideoModel video;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool showLastPlayed;
 
   const VideoCard({
     super.key,
     required this.video,
-    required this.onTap,
+    this.onTap,
     this.showLastPlayed = false,
   });
 
@@ -31,7 +32,14 @@ class VideoCard extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: onTap ?? () async {
+            // Use NextPlayerLauncher to launch native player
+            try {
+              await NextPlayerLauncher.launch(video.path);
+            } catch (e) {
+              // Optionally show error/snackbar
+            }
+          },
           borderRadius: BorderRadius.circular(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

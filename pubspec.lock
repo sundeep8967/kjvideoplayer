@@ -53,10 +53,10 @@ packages:
     dependency: transitive
     description:
       name: csslib
-      sha256: "831883fb353c8bdc1d71979e5b342c7d88acfbc643113c14ae51e2442ea0f20f"
+      sha256: "09bad715f418841f976c77db72d5398dc1253c21fb9c0c7f0b0b985860b2d58e"
       url: "https://pub.dev"
     source: hosted
-    version: "0.17.3"
+    version: "1.0.2"
   cupertino_icons:
     dependency: "direct main"
     description:
@@ -172,10 +172,10 @@ packages:
     dependency: transitive
     description:
       name: html
-      sha256: "3a7812d5bcd2894edf53dfaf8cd640876cf6cef50a8f238745c8b8120ea74d3a"
+      sha256: "6d1264f2dffa1b1101c25a91dff0dc2daee4c18e87cd8538729773c073dbf602"
       url: "https://pub.dev"
     source: hosted
-    version: "0.15.4"
+    version: "0.15.6"
   http:
     dependency: transitive
     description:
@@ -625,42 +625,42 @@ packages:
     dependency: "direct main"
     description:
       name: video_player
-      sha256: "4a8c3492d734f7c39c2588a3206707a05ee80cef52e8c7f3b2078d430c84bc17"
+      sha256: "0d55b1f1a31e5ad4c4967bfaa8ade0240b07d20ee4af1dfef5f531056512961a"
       url: "https://pub.dev"
     source: hosted
-    version: "2.9.2"
+    version: "2.10.0"
   video_player_android:
     dependency: transitive
     description:
       name: video_player_android
-      sha256: "7018dbcb395e2bca0b9a898e73989e67c0c4a5db269528e1b036ca38bcca0d0b"
+      sha256: "28dcc4122079f40f93a0965b3679aff1a5f4251cf79611bd8011f937eb6b69de"
       url: "https://pub.dev"
     source: hosted
-    version: "2.7.17"
+    version: "2.8.4"
   video_player_avfoundation:
     dependency: transitive
     description:
       name: video_player_avfoundation
-      sha256: "8a4e73a3faf2b13512978a43cf1cdda66feeeb900a0527f1fbfd7b19cf3458d3"
+      sha256: "0d47db6cbf72db61d86369219efd35c7f9d93515e1319da941ece81b1f21c49c"
       url: "https://pub.dev"
     source: hosted
-    version: "2.6.7"
+    version: "2.7.2"
   video_player_platform_interface:
     dependency: transitive
     description:
       name: video_player_platform_interface
-      sha256: "229d7642ccd9f3dc4aba169609dd6b5f3f443bb4cc15b82f7785fcada5af9bbb"
+      sha256: cf2a1d29a284db648fd66cbd18aacc157f9862d77d2cc790f6f9678a46c1db5a
       url: "https://pub.dev"
     source: hosted
-    version: "6.2.3"
+    version: "6.4.0"
   video_player_web:
     dependency: transitive
     description:
       name: video_player_web
-      sha256: "881b375a934d8ebf868c7fb1423b2bfaa393a0a265fa3f733079a86536064a10"
+      sha256: e8bba2e5d1e159d5048c9a491bb2a7b29c535c612bb7d10c1e21107f5bd365ba
       url: "https://pub.dev"
     source: hosted
-    version: "2.3.3"
+    version: "2.3.5"
   video_thumbnail:
     dependency: "direct main"
     description:
