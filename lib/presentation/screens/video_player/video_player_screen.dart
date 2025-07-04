@@ -5,15 +5,14 @@ import '../../../data/models/video_model.dart';
 import '../../../data/services/storage_service.dart';
 import '../../widgets/video_player/video_player_widget.dart';
 import 'enhanced_video_player_screen.dart';
+import '../../../core/nextplayer_launcher.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
   final VideoModel video;
-  final bool autoPlay;
 
   const VideoPlayerScreen({
     super.key,
     required this.video,
-    this.autoPlay = true,
   });
 
   @override
@@ -23,10 +22,49 @@ class VideoPlayerScreen extends StatefulWidget {
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   final StorageService _storageService = StorageService();
   Duration? _savedPosition;
+  bool _useBuiltInPlayer = false;
 
   @override
   void initState() {
     super.initState();
+    _tryLaunchNextPlayer();
+  }
+
+  Future<void> _tryLaunchNextPlayer() async {
+    try {
+      // Check if NextPlayer is installed immediately
+      final isInstalled = await NextPlayerLauncher.isNextPlayerInstalled();
+      
+      if (isInstalled) {
+        // Launch NextPlayer with the video
+        final success = await NextPlayerLauncher.launchVideo(widget.video.path);
+        
+        if (success) {
+          // NextPlayer launched successfully, immediately close this screen
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
+          
+          // Save to recent videos in background
+          final recentVideos = await _storageService.getRecentVideos();
+          final updatedVideos = [widget.video, ...recentVideos.where((v) => v.path != widget.video.path)];
+          await _storageService.saveRecentVideos(updatedVideos.take(10).toList());
+          return;
+        }
+      }
+      
+      // If NextPlayer is not available or failed, silently use built-in player
+      _fallbackToBuiltInPlayer();
+    } catch (e) {
+      // If NextPlayer launch fails, silently use built-in player
+      _fallbackToBuiltInPlayer();
+    }
+  }
+
+  void _fallbackToBuiltInPlayer() {
+    setState(() {
+      _useBuiltInPlayer = true;
+    });
     _initializePlayer();
   }
 
@@ -34,25 +72,39 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     // Set video playback UI
     SystemUIHelper.setVideoPlaybackUI();
     
-    // Load saved playback position
+    // Set landscape orientation for video playback
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    
+    // Hide system UI for immersive video experience
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    
+    // Load saved position
     _savedPosition = await _storageService.getPlaybackPosition(widget.video.path);
   }
 
   @override
   void dispose() {
-    // Restore normal UI
+    // Restore portrait orientation
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+    
+    // Restore system UI
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     SystemUIHelper.restoreNormalUI();
     super.dispose();
   }
 
   void _onBackPressed() {
-    SystemUIHelper.restoreNormalUI();
     Navigator.pop(context);
   }
 
   void _onPositionChanged(Duration position) {
-    // Save playback position every 10 seconds
-    if (position.inSeconds % 10 == 0) {
+    if (position.inSeconds % 5 == 0) {
       _storageService.savePlaybackPosition(widget.video.path, position);
     }
   }
@@ -62,163 +114,98 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Bookmark added'),
-        duration: Duration(seconds: 1),
+        duration: Duration(seconds: 2),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Column(
-        children: [
-          // Player selection header
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 40, 16, 16),
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  onPressed: _onBackPressed,
+    // If using built-in player, show the video player interface
+    if (_useBuiltInPlayer) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Column(
+          children: [
+            // Custom App Bar
+            Container(
+              height: MediaQuery.of(context).padding.top + 56,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.black54, Colors.transparent],
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Text(
-                    widget.video.displayName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
+              ),
+              child: SafeArea(
+                child: Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back, color: Colors.white),
+                      onPressed: _onBackPressed,
                     ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          
-          // Player options
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  // Enhanced NextPlayer (Recommended)
-                  Card(
-                    color: Colors.orange.withOpacity(0.1),
-                    child: ListTile(
-                      leading: const Icon(Icons.star, color: Colors.orange),
-                      title: const Text(
-                        'Enhanced NextPlayer',
-                        style: TextStyle(
+                    Expanded(
+                      child: Text(
+                        widget.video.displayName,
+                        style: const TextStyle(
                           color: Colors.white,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
                         ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      subtitle: const Text(
-                        'Professional video player with advanced gestures, PiP, and multi-track support',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                      trailing: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.orange,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Text(
-                          'RECOMMENDED',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      onTap: () {
-                        Navigator.pushReplacement(
-                          context,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.enhanced_encryption, color: Colors.white),
+                      onPressed: () {
+                        Navigator.of(context).pushReplacement(
                           MaterialPageRoute(
                             builder: (context) => EnhancedVideoPlayerScreen(video: widget.video),
                           ),
                         );
                       },
                     ),
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  
-                  // Original Video Player
-                  Card(
-                    color: Colors.grey.withOpacity(0.1),
-                    child: ListTile(
-                      leading: const Icon(Icons.play_circle, color: Colors.white),
-                      title: const Text(
-                        'Standard Player',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      subtitle: const Text(
-                        'Basic video player with standard controls',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                      onTap: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => _StandardPlayerScreen(
-                              video: widget.video,
-                              autoPlay: widget.autoPlay,
-                              savedPosition: _savedPosition,
-                              onPositionChanged: _onPositionChanged,
-                              onBookmarkAdded: _onBookmarkAdded,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StandardPlayerScreen extends StatelessWidget {
-  final VideoModel video;
-  final bool autoPlay;
-  final Duration? savedPosition;
-  final Function(Duration) onPositionChanged;
-  final Function(Duration) onBookmarkAdded;
-  
-  const _StandardPlayerScreen({
-    required this.video,
-    required this.autoPlay,
-    required this.savedPosition,
-    required this.onPositionChanged,
-    required this.onBookmarkAdded,
-  });
-  
-  @override
-  Widget build(BuildContext context) {
+            // Video Player
+            Expanded(
+              child: VideoPlayerWidget(
+                video: widget.video,
+                startPosition: _savedPosition,
+                onPositionChanged: _onPositionChanged,
+                onBookmarkAdded: _onBookmarkAdded,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // If NextPlayer is launching or failed, show minimal screen
     return Scaffold(
       backgroundColor: Colors.black,
-      body: VideoPlayerWidget(
-        video: video,
-        autoPlay: autoPlay,
-        startPosition: savedPosition,
-        onBack: () {
-          SystemUIHelper.restoreNormalUI();
-          Navigator.pop(context);
-        },
-        onPositionChanged: onPositionChanged,
-        onBookmarkAdded: onBookmarkAdded,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.asset(
+              'assets/applogo.png',
+              width: 120,
+              height: 120,
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Opening Video...',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
