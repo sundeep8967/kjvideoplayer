@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/video_model.dart';
-import '../../../nextplayer_video_player.dart';
+import '../../../core/video_player/flutter_video_player.dart';
 
 class VideoPlayerWidget extends StatelessWidget {
   final VideoModel video;
@@ -22,10 +22,14 @@ class VideoPlayerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return NextPlayerVideoPlayer(
+    return FlutterVideoPlayer(
       videoPath: video.path,
       videoTitle: video.displayName,
       autoPlay: autoPlay,
+      startPosition: startPosition,
+      onBack: onBack,
+      onPositionChanged: onPositionChanged,
+      onBookmarkAdded: onBookmarkAdded,
       showControls: true,
     );
   }
