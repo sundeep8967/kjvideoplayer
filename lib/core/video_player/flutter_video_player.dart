@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import '../utils/system_ui_helper.dart';
+import 'simple_screen_orientation_manager.dart';
 
-/// Pure Flutter Video Player with NextPlayer-like functionality
-/// Replaces NextPlayer with native Flutter video_player package
+/// Pure Flutter Video Player with advanced functionality
+/// Uses native Flutter video_player package for reliable video playback
 class FlutterVideoPlayer extends StatefulWidget {
   final String videoPath;
   final String videoTitle;

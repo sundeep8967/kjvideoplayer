@@ -102,182 +102,39 @@ class _TinderFolderCardsState extends State<TinderFolderCards>
             ],
           ),
         ),
-
-        // Card stack
+        
+        // Cards stack
         Expanded(
-          child: PageView.builder(
-            controller: _pageController,
-            onPageChanged: (index) {
-              setState(() {
-                _currentIndex = index;
-              });
-            },
-            itemCount: widget.folders.length,
-            itemBuilder: (context, index) {
-              final folderName = widget.folders[index];
-              final videos = widget.folderVideos[folderName] ?? [];
-              final isCurrentCard = index == _currentIndex;
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Background cards (next 2 cards)
+              for (int i = math.min(_currentIndex + 2, widget.folders.length - 1); 
+                   i > _currentIndex; i--)
+                _buildBackgroundCard(i),
               
-              return AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                margin: EdgeInsets.symmetric(
-                  horizontal: isCurrentCard ? 10 : 20,
-                  vertical: isCurrentCard ? 20 : 40,
-                ),
-                child: GestureDetector(
-                  onTap: () {
-                    HapticFeedbackHelper.lightImpact();
-                    widget.onFolderTap(folderName);
-                  },
-                  onPanUpdate: (details) {
-                    setState(() {
-                      _dragOffset = details.delta.dx;
-                      _isDragging = true;
-                    });
-                  },
-                  onPanEnd: (details) {
-                    setState(() {
-                      _isDragging = false;
-                      _dragOffset = 0.0;
-                    });
-
-                    final velocity = details.velocity.pixelsPerSecond;
-                    
-                    if (velocity.dx > 500) {
-                      _onSwipeRight();
-                    } else if (velocity.dx < -500) {
-                      _onSwipeLeft();
-                    }
-                  },
-                  child: Transform.rotate(
-                    angle: _isDragging && isCurrentCard ? _dragOffset * 0.001 : 0,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.15),
-                            blurRadius: 15,
-                            offset: const Offset(0, 8),
-                          ),
-                        ],
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(20),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            // Just show the cycling thumbnail without folder info
-                            Container(
-                              width: double.infinity,
-                              height: double.infinity,
-                              child: _buildFolderThumbnail(videos),
-                            ),
-                            
-                            // Folder info overlay
-                            Positioned(
-                              bottom: 0,
-                              left: 0,
-                              right: 0,
-                              child: Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [
-                                      Colors.transparent,
-                                      Colors.black.withValues(alpha: 0.6),
-                                    ],
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      folderName,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.video_library,
-                                          color: Colors.white70,
-                                          size: 16,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          '${videos.length} video${videos.length == 1 ? '' : 's'}',
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 16),
-                                        const Icon(
-                                          Icons.folder,
-                                          color: Colors.white70,
-                                          size: 16,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        const Text(
-                                          'Swipe to browse',
-                                          style: TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
+              // Current card
+              if (_currentIndex < widget.folders.length)
+                _buildCurrentCard(_currentIndex),
+            ],
           ),
         ),
-
-        // Page indicator
-        Padding(
+        
+        // Progress indicator
+        Container(
           padding: const EdgeInsets.all(20),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(
-              math.min(widget.folders.length, 5),
-              (index) {
-                final actualIndex = _currentIndex - 2 + index;
-                final isActive = actualIndex == _currentIndex;
-                final isVisible = actualIndex >= 0 && actualIndex < widget.folders.length;
-                
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: isActive ? 24 : 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: isVisible 
-                        ? (isActive ? const Color(0xFF007AFF) : Colors.grey[300])
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                );
-              },
-            ),
+            children: [
+              Text(
+                '${_currentIndex + 1} / ${widget.folders.length}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -292,24 +149,17 @@ class _TinderFolderCardsState extends State<TinderFolderCards>
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.1),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            icon,
-            color: color,
-            size: 20,
-          ),
+        Icon(
+          icon,
+          color: color,
+          size: 20,
         ),
         const SizedBox(height: 4),
         Text(
           label,
           style: TextStyle(
             fontSize: 10,
-            color: Colors.grey[600],
+            color: color,
             fontWeight: FontWeight.w500,
           ),
           textAlign: TextAlign.center,
@@ -318,222 +168,306 @@ class _TinderFolderCardsState extends State<TinderFolderCards>
     );
   }
 
-  Widget _buildFolderThumbnail(List<VideoModel> videos) {
-    if (videos.isEmpty) {
-      return Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF007AFF),
-              Color(0xFF0051D5),
+  Widget _buildBackgroundCard(int index) {
+    final scale = 1.0 - (index - _currentIndex) * 0.05;
+    final offset = (index - _currentIndex) * 10.0;
+    
+    return Transform.scale(
+      scale: scale,
+      child: Transform.translate(
+        offset: Offset(0, offset),
+        child: Opacity(
+          opacity: 0.5,
+          child: _buildCard(widget.folders[index], index, isInteractive: false),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCurrentCard(int index) {
+    return GestureDetector(
+      onTap: () => widget.onFolderTap(widget.folders[index]),
+      onPanUpdate: (details) {
+        setState(() {
+          _dragOffset = details.delta.dx;
+          _isDragging = true;
+        });
+      },
+      onPanEnd: (details) {
+        setState(() {
+          _isDragging = false;
+          _dragOffset = 0.0;
+        });
+        
+        final velocity = details.velocity.pixelsPerSecond;
+        
+        if (velocity.dx > 500) {
+          _onSwipeRight();
+        } else if (velocity.dx < -500) {
+          _onSwipeLeft();
+        }
+      },
+      child: Transform.translate(
+        offset: Offset(_isDragging ? _dragOffset * 0.3 : 0, 0),
+        child: Transform.rotate(
+          angle: _isDragging ? _dragOffset * 0.001 : 0,
+          child: _buildCard(widget.folders[index], index, isInteractive: true),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCard(String folderPath, int index, {required bool isInteractive}) {
+    final folderName = folderPath.split('/').last;
+    final videos = widget.folderVideos[folderPath] ?? [];
+    
+    return Container(
+      width: MediaQuery.of(context).size.width * 0.85,
+      height: MediaQuery.of(context).size.height * 0.6,
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      child: Card(
+        elevation: isInteractive ? 12 : 6,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Folder thumbnail
+              TinderFolderThumbnail(
+                videos: videos,
+                folderName: folderName,
+              ),
+              
+              // Gradient overlay
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.transparent,
+                      Colors.black.withOpacity(0.8),
+                    ],
+                    stops: const [0.0, 0.5, 1.0],
+                  ),
+                ),
+              ),
+              
+              // Folder info
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        folderName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.video_library,
+                            color: Colors.white.withOpacity(0.8),
+                            size: 16,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${videos.length} videos',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: 14,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            _getTotalSize(videos),
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Folder icon overlay
+              if (isInteractive)
+                Center(
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.folder_open,
+                      color: Colors.white,
+                      size: 40,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
-        child: const Center(
-          child: Icon(
-            Icons.folder,
-            size: 64,
-            color: Colors.white,
-          ),
-        ),
-      );
-    }
+      ),
+    );
+  }
 
-    // Show cycling thumbnail similar to folder card but without UI elements
-    return TinderFolderThumbnail(videos: videos);
+  String _getTotalSize(List<VideoModel> videos) {
+    int totalSize = 0;
+    for (final video in videos) {
+      totalSize += video.size;
+    }
+    
+    if (totalSize < 1024) return '${totalSize}B';
+    if (totalSize < 1024 * 1024) return '${(totalSize / 1024).toStringAsFixed(1)}KB';
+    if (totalSize < 1024 * 1024 * 1024) return '${(totalSize / (1024 * 1024)).toStringAsFixed(1)}MB';
+    return '${(totalSize / (1024 * 1024 * 1024)).toStringAsFixed(1)}GB';
   }
 }
 
 class TinderFolderThumbnail extends StatefulWidget {
   final List<VideoModel> videos;
+  final String folderName;
 
   const TinderFolderThumbnail({
     super.key,
     required this.videos,
+    required this.folderName,
   });
 
   @override
   State<TinderFolderThumbnail> createState() => _TinderFolderThumbnailState();
 }
 
-class _TinderFolderThumbnailState extends State<TinderFolderThumbnail>
-    with TickerProviderStateMixin {
+class _TinderFolderThumbnailState extends State<TinderFolderThumbnail> {
   final ThumbnailService _thumbnailService = ThumbnailService();
-  List<String?> _thumbnailPaths = [];
-  bool _isLoadingThumbnails = false;
-  
-  late AnimationController _cycleController;
-  late Animation<double> _fadeAnimation;
-  Timer? _cycleTimer;
-  int _currentThumbnailIndex = 0;
+  final Map<String, String?> _thumbnailCache = {};
 
   @override
   void initState() {
     super.initState();
-    _initializeAnimations();
-    _loadFolderThumbnails();
+    _loadThumbnails();
   }
 
-  void _initializeAnimations() {
-    _cycleController = AnimationController(
-      duration: const Duration(milliseconds: 500),
-      vsync: this,
-    );
-    
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _cycleController,
-      curve: Curves.easeInOut,
-    ));
-  }
-
-  Future<void> _loadFolderThumbnails() async {
-    if (widget.videos.isEmpty) return;
-    
-    setState(() {
-      _isLoadingThumbnails = true;
-    });
-
-    List<String?> thumbnails = [];
-
-    for (final video in widget.videos) {
-      try {
-        final thumbnailPath = await _thumbnailService.generateThumbnail(video.path);
-        thumbnails.add(thumbnailPath);
-      } catch (e) {
-        thumbnails.add(null);
+  Future<void> _loadThumbnails() async {
+    final videosToLoad = widget.videos.take(4).toList();
+    for (final video in videosToLoad) {
+      if (!_thumbnailCache.containsKey(video.path)) {
+        final thumbnail = await _thumbnailService.generateThumbnail(video.path);
+        if (mounted) {
+          setState(() {
+            _thumbnailCache[video.path] = thumbnail;
+          });
+        }
       }
     }
-
-    if (mounted) {
-      setState(() {
-        _thumbnailPaths = thumbnails;
-        _isLoadingThumbnails = false;
-      });
-      
-      if (_thumbnailPaths.isNotEmpty) {
-        _startThumbnailCycling();
-      }
-    }
-  }
-
-  void _startThumbnailCycling() {
-    if (widget.videos.length <= 1) return;
-    
-    _cycleController.forward();
-    
-    _cycleTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      
-      setState(() {
-        _currentThumbnailIndex = (_currentThumbnailIndex + 1) % _thumbnailPaths.length;
-      });
-      
-      _cycleController.reset();
-      _cycleController.forward();
-    });
-  }
-
-  @override
-  void dispose() {
-    _cycleTimer?.cancel();
-    _cycleController.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingThumbnails) {
+    if (widget.videos.isEmpty) {
       return Container(
-        color: const Color(0xFFF2F2F7),
-        child: const Center(
-          child: SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF007AFF)),
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (_thumbnailPaths.isEmpty) {
-      return Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF007AFF),
-              Color(0xFF0051D5),
-            ],
-          ),
-        ),
+        color: Colors.grey[200],
         child: const Center(
           child: Icon(
-            Icons.folder,
+            Icons.folder_outlined,
             size: 64,
-            color: Colors.white,
+            color: Colors.grey,
           ),
         ),
       );
     }
 
-    return AnimatedBuilder(
-      animation: _fadeAnimation,
-      builder: (context, child) {
-        return Opacity(
-          opacity: _fadeAnimation.value,
-          child: Container(
-            width: double.infinity,
-            height: double.infinity,
-            child: _thumbnailPaths[_currentThumbnailIndex] != null
-                ? Image.file(
-                    File(_thumbnailPaths[_currentThumbnailIndex]!),
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        decoration: const BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [Color(0xFF007AFF), Color(0xFF0051D5)],
-                          ),
-                        ),
-                        child: const Center(
-                          child: Icon(
-                            Icons.folder,
-                            size: 64,
-                            color: Colors.white,
-                          ),
-                        ),
-                      );
-                    },
-                  )
-                : Container(
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF007AFF), Color(0xFF0051D5)],
-                      ),
-                    ),
-                    child: const Center(
-                      child: Icon(
-                        Icons.folder,
-                        size: 64,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-          ),
-        );
+    final videosToShow = widget.videos.take(4).toList();
+    
+    if (videosToShow.length == 1) {
+      return _buildSingleThumbnail(videosToShow.first);
+    } else {
+      return _buildGridThumbnails(videosToShow);
+    }
+  }
+
+  Widget _buildSingleThumbnail(VideoModel video) {
+    final thumbnailPath = _thumbnailCache[video.path];
+    
+    if (thumbnailPath != null && File(thumbnailPath).existsSync()) {
+      return Image.file(
+        File(thumbnailPath),
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => _buildDefaultThumbnail(),
+      );
+    }
+    
+    return _buildDefaultThumbnail();
+  }
+
+  Widget _buildGridThumbnails(List<VideoModel> videos) {
+    return GridView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 1.0,
+      ),
+      itemCount: 4,
+      itemBuilder: (context, index) {
+        if (index < videos.length) {
+          final video = videos[index];
+          final thumbnailPath = _thumbnailCache[video.path];
+          
+          if (thumbnailPath != null && File(thumbnailPath).existsSync()) {
+            return Image.file(
+              File(thumbnailPath),
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => _buildDefaultThumbnail(),
+            );
+          }
+          
+          return _buildDefaultThumbnail();
+        } else {
+          return Container(
+            color: Colors.grey[100],
+            child: Icon(
+              Icons.add,
+              color: Colors.grey[400],
+              size: 32,
+            ),
+          );
+        }
       },
+    );
+  }
+
+  Widget _buildDefaultThumbnail() {
+    return Container(
+      color: Colors.grey[200],
+      child: const Center(
+        child: Icon(
+          Icons.video_file,
+          size: 32,
+          color: Colors.grey,
+        ),
+      ),
     );
   }
 }
