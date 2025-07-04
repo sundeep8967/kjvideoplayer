@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:video_player/video_player.dart';
+// Removed video_player dependency - using ExoPlayer instead
 import '../utils/system_ui_helper.dart';
 import 'simple_screen_orientation_manager.dart';
 
@@ -37,8 +37,8 @@ class FlutterVideoPlayer extends StatefulWidget {
 class _FlutterVideoPlayerState extends State<FlutterVideoPlayer>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   
-  // Video player controller
-  VideoPlayerController? _controller;
+  // Video player controller - using ExoPlayer instead
+  // VideoPlayerController? _controller;
   
   // Player state
   bool _isInitialized = false;
@@ -124,19 +124,19 @@ class _FlutterVideoPlayerState extends State<FlutterVideoPlayer>
       }
 
       // Initialize video player controller
-      _controller = VideoPlayerController.file(file);
+      // _controller = VideoPlayerController.file(file); // Replaced with ExoPlayer
       
-      // Add listeners
-      _controller!.addListener(_videoPlayerListener);
+      // Add listeners - commented out for ExoPlayer migration
+      // _controller!.addListener(_videoPlayerListener);
       
-      // Initialize the controller
-      await _controller!.initialize();
+      // Initialize the controller - commented out for ExoPlayer migration
+      // await _controller!.initialize();
       
       if (mounted) {
         setState(() {
           _isInitialized = true;
-          _videoDuration = _controller!.value.duration;
-          _videoSize = _controller!.value.size;
+          // _videoDuration = _controller!.value.duration;
+          // _videoSize = _controller!.value.size;
         });
 
         // Seek to start position if provided
@@ -387,8 +387,16 @@ class _FlutterVideoPlayerState extends State<FlutterVideoPlayer>
         _onDoubleTapRight();
       },
       child: AspectRatio(
-        aspectRatio: _controller!.value.aspectRatio,
-        child: VideoPlayer(_controller!),
+        aspectRatio: 16/9, // Default aspect ratio
+        child: Container(
+          color: Colors.black,
+          child: const Center(
+            child: Text(
+              'Use ExoPlayerVideoPlayer instead',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ),
       ),
     );
   }

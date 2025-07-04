@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/models/video_model.dart';
 import '../../core/constants/app_constants.dart';
-import '../../core/platform/nextplayer_launcher.dart';
+
 
 class VideoCard extends StatelessWidget {
   final VideoModel video;
@@ -32,13 +32,11 @@ class VideoCard extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap ?? () async {
-            // Use NextPlayerLauncher to launch native player
-            try {
-              await NextPlayerLauncher.launch(video.path);
-            } catch (e) {
-              // Optionally show error/snackbar
-            }
+          onTap: onTap ?? () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => VideoPlayerScreen(video: video)),
+            );
           },
           borderRadius: BorderRadius.circular(16),
           child: Column(

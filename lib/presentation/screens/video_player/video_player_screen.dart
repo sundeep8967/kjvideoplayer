@@ -120,7 +120,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           Expanded(
             child: VideoPlayerWidget(
               video: widget.video,
+              autoPlay: true,
               startPosition: _savedPosition,
+              onBack: _onBackPressed,
               onPositionChanged: _onPositionChanged,
               onBookmarkAdded: _onBookmarkAdded,
             ),

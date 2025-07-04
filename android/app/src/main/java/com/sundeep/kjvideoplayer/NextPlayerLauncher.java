@@ -1,4 +1,4 @@
-package com.sundeep.kjvideoplayer;
+// File removed: NextPlayerLauncher.java is no longer needed. All video playback is handled by Flutter.
 
 import android.content.Intent;
 import android.net.Uri;

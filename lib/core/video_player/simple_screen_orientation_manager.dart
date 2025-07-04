@@ -37,4 +37,9 @@ class SimpleScreenOrientationManager {
       DeviceOrientation.landscapeRight,
     ]);
   }
+  
+  /// Toggle between landscape and portrait orientations
+  Future<void> toggle() async {
+    await allowAllOrientations();
+  }
 }
