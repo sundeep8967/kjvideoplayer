@@ -24,14 +24,17 @@ class VideoPlayerWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (Theme.of(context).platform == TargetPlatform.android) {
+      print('VIDEO PLAYER: Using NextPlayerView (Native Android ExoPlayer)');
       return NextPlayerView(
         videoPath: video.path,
         onViewCreated: (controller) {
+          print('VIDEO PLAYER: NextPlayerView created successfully');
           if (autoPlay) controller.play();
           // Optionally: wire up event handlers here if needed
         },
       );
     } else {
+      print('VIDEO PLAYER: Using ExoPlayerVideoPlayer (Flutter implementation)');
       return ExoPlayerVideoPlayer(
         videoPath: video.path,
         videoTitle: video.displayName,
