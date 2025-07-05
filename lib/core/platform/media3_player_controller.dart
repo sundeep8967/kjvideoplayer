@@ -285,14 +285,16 @@ class Media3PlayerController {
   void _handleTracksChanged(Map<String, dynamic> args) {
     final videoTracks = args['videoTracks'] as List<dynamic>? ?? [];
     final audioTracks = args['audioTracks'] as List<dynamic>? ?? [];
+    final subtitleTracks = args['subtitleTracks'] as List<dynamic>? ?? [];
     
     _tracksController.add({
       'videoTracks': videoTracks,
       'audioTracks': audioTracks,
+      'subtitleTracks': subtitleTracks,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
     
-    print('Media3Player: Tracks changed - Video: ${videoTracks.length}, Audio: ${audioTracks.length}');
+    print('Media3Player: Tracks changed - Video: ${videoTracks.length}, Audio: ${audioTracks.length}, Subtitle: ${subtitleTracks.length}');
   }
   
   void _handleControlsVisibilityChanged(Map<String, dynamic> args) {
@@ -313,6 +315,36 @@ class Media3PlayerController {
     });
   }
   
+  /// Select audio track by index
+  Future<void> setAudioTrack(int index) async {
+    try {
+      await _channel.invokeMethod('setAudioTrack', {'index': index});
+    } catch (e) {
+      _error = e.toString();
+      _errorController.add(_error);
+    }
+  }
+
+  /// Select subtitle track by index
+  Future<void> setSubtitleTrack(int index) async {
+    try {
+      await _channel.invokeMethod('setSubtitleTrack', {'index': index});
+    } catch (e) {
+      _error = e.toString();
+      _errorController.add(_error);
+    }
+  }
+
+  /// Disable subtitle track
+  Future<void> disableSubtitle() async {
+    try {
+      await _channel.invokeMethod('disableSubtitle');
+    } catch (e) {
+      _error = e.toString();
+      _errorController.add(_error);
+    }
+  }
+
   /// Dispose the controller
   void dispose() {
     _playingController.close();

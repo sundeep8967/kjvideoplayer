@@ -5,7 +5,6 @@ import 'dart:io';
 import '../../data/models/video_model.dart';
 import '../../data/services/thumbnail_service.dart';
 import '../../core/utils/haptic_feedback_helper.dart';
-import 'ios_folder_card.dart';
 
 class TinderFolderCards extends StatefulWidget {
   final List<String> folders;

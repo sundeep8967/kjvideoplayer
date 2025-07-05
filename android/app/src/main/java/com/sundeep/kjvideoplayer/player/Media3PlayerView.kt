@@ -41,6 +41,11 @@ class Media3PlayerView(
     private var playWhenReady = true
     private var currentPosition = 0L
     private var mediaItemIndex = 0
+
+    // Track selector reference for switching tracks
+    private val trackSelector: DefaultTrackSelector by lazy {
+        DefaultTrackSelector(context)
+    }
     
     init {
         setupPlayerView()
@@ -69,42 +74,83 @@ class Media3PlayerView(
             .setPrioritizeTimeOverSizeThresholds(true)
             .setBackBuffer(DefaultLoadControl.DEFAULT_BACK_BUFFER_DURATION_MS, true) // Enable back buffer
             .build()
-        
-        // Enhanced track selector with adaptive bitrate
-        val trackSelector = DefaultTrackSelector(context).apply {
-            setParameters(
-                buildUponParameters()
-                    .setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE) // No resolution limit - let adaptive streaming decide
-                    .setMaxVideoBitrate(Int.MAX_VALUE) // No bitrate limit - adaptive streaming
-                    .setPreferredAudioLanguage("en")
-                    .setForceLowestBitrate(false)
-                    .setAllowVideoMixedMimeTypeAdaptiveness(true) // Better codec switching
-                    .setAllowAudioMixedMimeTypeAdaptiveness(true)
-                    .setAllowVideoNonSeamlessAdaptiveness(true) // Smoother quality changes
-                    .setTunnelingEnabled(false) // Disable tunneling for better compatibility
-            )
-        }
-        
+
+        // Use the class-level trackSelector so we can switch tracks later
+        trackSelector.setParameters(
+            trackSelector.buildUponParameters()
+                .setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
+                .setMaxVideoBitrate(Int.MAX_VALUE)
+                .setPreferredAudioLanguage("en")
+                .setForceLowestBitrate(false)
+                .setAllowVideoMixedMimeTypeAdaptiveness(true)
+                .setAllowAudioMixedMimeTypeAdaptiveness(true)
+                .setAllowVideoNonSeamlessAdaptiveness(true)
+                .setTunnelingEnabled(false)
+        )
+
         // Enhanced ExoPlayer with performance optimizations
         return ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
             .setTrackSelector(trackSelector)
-            .setSeekBackIncrementMs(10_000) // 10s seek back
-            .setSeekForwardIncrementMs(30_000) // 30s seek forward
-            .setHandleAudioBecomingNoisy(true) // Auto-pause on headphone disconnect
-            .setWakeMode(C.WAKE_MODE_NETWORK) // Optimize for network playback
-            .setUseLazyPreparation(true) // Faster startup
+            .setSeekBackIncrementMs(10_000)
+            .setSeekForwardIncrementMs(30_000)
+            .setHandleAudioBecomingNoisy(true)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
+            .setUseLazyPreparation(true)
             .build().apply {
-                // Performance optimizations
                 setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING)
                 setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(C.USAGE_MEDIA)
                         .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                         .build(),
-                    true // Handle audio focus
+                    true
                 )
             }
+    }
+
+    // Track selection helpers
+    private fun setAudioTrack(index: Int) {
+        val mappedTrackInfo = trackSelector.currentMappedTrackInfo ?: return
+        val rendererIndex = (0 until mappedTrackInfo.rendererCount).firstOrNull {
+            mappedTrackInfo.getRendererType(it) == C.TRACK_TYPE_AUDIO
+        } ?: return
+        val group = mappedTrackInfo.getTrackGroups(rendererIndex)
+        if (index < 0 || index >= group.length) return
+        val parameters = trackSelector.buildUponParameters()
+            .setSelectionOverride(
+                rendererIndex,
+                group,
+                DefaultTrackSelector.SelectionOverride(index, 0)
+            )
+        trackSelector.setParameters(parameters)
+    }
+
+    private fun setSubtitleTrack(index: Int) {
+        val mappedTrackInfo = trackSelector.currentMappedTrackInfo ?: return
+        val rendererIndex = (0 until mappedTrackInfo.rendererCount).firstOrNull {
+            mappedTrackInfo.getRendererType(it) == C.TRACK_TYPE_TEXT
+        } ?: return
+        val group = mappedTrackInfo.getTrackGroups(rendererIndex)
+        if (index < 0 || index >= group.length) return
+        val parameters = trackSelector.buildUponParameters()
+            .setRendererDisabled(rendererIndex, false)
+            .setSelectionOverride(
+                rendererIndex,
+                group,
+                DefaultTrackSelector.SelectionOverride(index, 0)
+            )
+        trackSelector.setParameters(parameters)
+    }
+
+    private fun disableSubtitle() {
+        val mappedTrackInfo = trackSelector.currentMappedTrackInfo ?: return
+        val rendererIndex = (0 until mappedTrackInfo.rendererCount).firstOrNull {
+            mappedTrackInfo.getRendererType(it) == C.TRACK_TYPE_TEXT
+        } ?: return
+        val parameters = trackSelector.buildUponParameters()
+            .setRendererDisabled(rendererIndex, true)
+        trackSelector.setParameters(parameters)
     }
     
     private fun setupPlayerView() {
@@ -117,6 +163,26 @@ class Media3PlayerView(
             controllerAutoShow = true
             controllerHideOnTouch = true
             controllerShowTimeoutMs = 3000
+            
+            // Customize progress bar colors after layout
+            viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                override fun onGlobalLayout() {
+                    viewTreeObserver.removeOnGlobalLayoutListener(this)
+                    try {
+                        // Find the progress bar and set blue color
+                        val progressBar = findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)
+                        progressBar?.let { timeBar ->
+                            timeBar.setPlayedColor(android.graphics.Color.BLUE)
+                            timeBar.setScrubberColor(android.graphics.Color.BLUE)
+                            android.util.Log.d("Media3Player", "Successfully set progress bar to blue")
+                        } ?: run {
+                            android.util.Log.d("Media3Player", "Progress bar not found")
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("Media3Player", "Error customizing progress bar: ${e.message}")
+                    }
+                }
+            })
             
             // Enable Media3's gesture controls
             setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
@@ -207,6 +273,7 @@ class Media3PlayerView(
             override fun onTracksChanged(tracks: Tracks) {
                 val videoTracks = mutableListOf<Map<String, Any>>()
                 val audioTracks = mutableListOf<Map<String, Any>>()
+                val subtitleTracks = mutableListOf<Map<String, Any>>()
                 
                 for (trackGroup in tracks.groups) {
                     if (trackGroup.length > 0) {
@@ -218,7 +285,8 @@ class Media3PlayerView(
                                     "height" to (trackFormat.height ?: 0),
                                     "bitrate" to (trackFormat.bitrate ?: 0),
                                     "frameRate" to (trackFormat.frameRate ?: 0f),
-                                    "codec" to (trackFormat.codecs ?: "unknown")
+                                    "codec" to (trackFormat.codecs ?: "unknown"),
+                                    "name" to (trackFormat.label ?: "Video Track")
                                 ))
                             }
                             trackFormat.sampleMimeType?.startsWith("audio/") == true -> {
@@ -226,7 +294,15 @@ class Media3PlayerView(
                                     "bitrate" to (trackFormat.bitrate ?: 0),
                                     "sampleRate" to (trackFormat.sampleRate ?: 0),
                                     "channelCount" to (trackFormat.channelCount ?: 0),
-                                    "codec" to (trackFormat.codecs ?: "unknown")
+                                    "codec" to (trackFormat.codecs ?: "unknown"),
+                                    "name" to (trackFormat.label ?: "Audio Track"),
+                                    "language" to (trackFormat.language ?: "Unknown")
+                                ))
+                            }
+                            trackFormat.sampleMimeType?.startsWith("text/") == true || trackFormat.sampleMimeType?.contains("subtitle") == true -> {
+                                subtitleTracks.add(mapOf(
+                                    "name" to (trackFormat.label ?: "Subtitle"),
+                                    "language" to (trackFormat.language ?: "Unknown")
                                 ))
                             }
                         }
@@ -235,7 +311,8 @@ class Media3PlayerView(
                 
                 channel.invokeMethod("onTracksChanged", mapOf(
                     "videoTracks" to videoTracks,
-                    "audioTracks" to audioTracks
+                    "audioTracks" to audioTracks,
+                    "subtitleTracks" to subtitleTracks
                 ))
             }
         })
@@ -310,7 +387,26 @@ class Media3PlayerView(
                     result.success(null)
                 }
                 
-                else -> result.notImplemented()
+                else -> {
+                    // Track selection methods
+                    when (call.method) {
+                        "setAudioTrack" -> {
+                            val index = call.argument<Int>("index") ?: 0
+                            setAudioTrack(index)
+                            result.success(null)
+                        }
+                        "setSubtitleTrack" -> {
+                            val index = call.argument<Int>("index") ?: 0
+                            setSubtitleTrack(index)
+                            result.success(null)
+                        }
+                        "disableSubtitle" -> {
+                            disableSubtitle()
+                            result.success(null)
+                        }
+                        else -> result.notImplemented()
+                    }
+                }
             }
         }
     }

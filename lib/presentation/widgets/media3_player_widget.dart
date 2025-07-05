@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/platform/media3_player_controller.dart';
 
-/// Media3 Player Widget - Clean implementation without NextPlayer dependencies
+/// Media3 Player Widget - Enhanced implementation with comprehensive controls
 class Media3PlayerWidget extends StatefulWidget {
   final String videoPath;
   final String? videoTitle;
@@ -31,7 +31,7 @@ class Media3PlayerWidget extends StatefulWidget {
 }
 
 class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   
   Media3PlayerController? _controller;
   late StreamSubscription _playingSubscription;
@@ -39,18 +39,79 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   late StreamSubscription _positionSubscription;
   late StreamSubscription _errorSubscription;
   late StreamSubscription _initializedSubscription;
+  late StreamSubscription _performanceSubscription;
+  late StreamSubscription _tracksSubscription;
   
   // UI State
   bool _isPlaying = false;
+  bool _isBuffering = false;
+  bool _isInitialized = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   String? _error;
+  
+  // Enhanced UI State
+  bool _showControls = true;
+  bool _showSettings = false;
+  bool _showSpeedMenu = false;
+  bool _showVolumeSlider = false;
+  double _currentSpeed = 1.0;
+  double _currentVolume = 1.0;
+  int _bufferedPercentage = 0;
+  
+  // Animation controllers
+  late AnimationController _controlsAnimationController;
+  late AnimationController _settingsAnimationController;
+  late Animation<double> _controlsOpacity;
+  late Animation<double> _settingsSlideAnimation;
+  
+  // Track information
+  List<Map<String, dynamic>> _videoTracks = [];
+  List<Map<String, dynamic>> _audioTracks = [];
+  List<Map<String, dynamic>> _subtitleTracks = [];
+  
+  // Performance monitoring
+  Map<String, dynamic> _performanceData = {};
+  
+  // Timer for auto-hiding controls
+  Timer? _controlsTimer;
   
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _initializeAnimations();
     _initializePlayer();
+    _startControlsTimer();
+  }
+  
+  void _initializeAnimations() {
+    _controlsAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _settingsAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 250),
+      vsync: this,
+    );
+    
+    _controlsOpacity = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _controlsAnimationController,
+      curve: Curves.easeInOut,
+    ));
+    
+    _settingsSlideAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.0,
+    ).animate(CurvedAnimation(
+      parent: _settingsAnimationController,
+      curve: Curves.easeInOut,
+    ));
+    
+    _controlsAnimationController.forward();
   }
   
   void _initializePlayer() {
@@ -68,7 +129,9 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     });
     
     _bufferingSubscription = _controller!.onBufferingChanged.listen((isBuffering) {
-      // Media3 handles buffering indicators internally
+      setState(() {
+        _isBuffering = isBuffering;
+      });
     });
     
     _positionSubscription = _controller!.onPositionChanged.listen((position) {
@@ -91,7 +154,28 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     });
     
     _initializedSubscription = _controller!.onInitialized.listen((_) {
-      // Media3 handles initialization internally
+      setState(() {
+        _isInitialized = true;
+      });
+    });
+    
+    _performanceSubscription = _controller!.onPerformanceUpdate.listen((data) {
+      setState(() {
+        _performanceData = data;
+        
+        // Update buffered percentage if available
+        if (data['bufferedPercentage'] != null) {
+          _bufferedPercentage = data['bufferedPercentage'];
+        }
+      });
+    });
+    
+    _tracksSubscription = _controller!.onTracksChanged.listen((data) {
+      setState(() {
+        _videoTracks = List<Map<String, dynamic>>.from(data['videoTracks'] ?? []);
+        _audioTracks = List<Map<String, dynamic>>.from(data['audioTracks'] ?? []);
+        _subtitleTracks = List<Map<String, dynamic>>.from(data['subtitleTracks'] ?? []);
+      });
     });
   }
   
@@ -103,9 +187,85 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     } else {
       _controller!.play();
     }
+    _resetControlsTimer();
   }
   
-  // Media3 handles controls internally, so these methods are not needed
+  void _startControlsTimer() {
+    _controlsTimer?.cancel();
+    _controlsTimer = Timer(const Duration(seconds: 3), () {
+      if (_showControls && _isPlaying) {
+        _hideControls();
+      }
+    });
+  }
+  
+  void _resetControlsTimer() {
+    _controlsTimer?.cancel();
+    if (_isPlaying) {
+      _startControlsTimer();
+    }
+  }
+  
+  void _toggleControls() {
+    if (_showControls) {
+      _hideControls();
+    } else {
+      _showControlsUI();
+    }
+  }
+  
+  void _showControlsUI() {
+    setState(() {
+      _showControls = true;
+    });
+    _controlsAnimationController.forward();
+    _resetControlsTimer();
+  }
+  
+  void _hideControls() {
+    setState(() {
+      _showControls = false;
+      _showSettings = false;
+      _showSpeedMenu = false;
+      _showVolumeSlider = false;
+    });
+    _controlsAnimationController.reverse();
+    _settingsAnimationController.reverse();
+  }
+  
+  void _changePlaybackSpeed(double speed) {
+    _controller?.setPlaybackSpeed(speed);
+    setState(() {
+      _currentSpeed = speed;
+      _showSpeedMenu = false;
+    });
+    _resetControlsTimer();
+  }
+  
+  void _changeVolume(double volume) {
+    _controller?.setVolume(volume);
+    setState(() {
+      _currentVolume = volume;
+    });
+  }
+  
+  void _seekForward() {
+    final newPosition = _position + const Duration(seconds: 10);
+    final maxPosition = _duration;
+    _controller?.seekTo(newPosition > maxPosition ? maxPosition : newPosition);
+    _resetControlsTimer();
+  }
+  
+  void _seekBackward() {
+    final newPosition = _position - const Duration(seconds: 10);
+    _controller?.seekTo(newPosition < Duration.zero ? Duration.zero : newPosition);
+    _resetControlsTimer();
+  }
+  
+  void _addBookmark() {
+    widget.onBookmarkAdded?.call(_position);
+    _resetControlsTimer();
+  }
   
   void _showErrorDialog(String error) {
     showDialog(
@@ -143,10 +303,11 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
-        onTap: null, // Media3 handles controls internally
+        onTap: _toggleControls,
+        onDoubleTap: _togglePlayPause,
         child: Stack(
           children: [
-            // Media3 Platform View with built-in controls
+            // Media3 Platform View with custom controls
             Container(
               width: double.infinity,
               height: double.infinity,
@@ -156,14 +317,27 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                   'videoPath': widget.videoPath,
                   'autoPlay': widget.autoPlay,
                   'startPosition': widget.startPosition?.inMilliseconds,
-                  'useBuiltInControls': true, // Use Media3's excellent controls
+                  'useBuiltInControls': true, // Use Media3's built-in controls for now
                 },
                 creationParamsCodec: const StandardMessageCodec(),
               ),
             ),
             
-            // Note: Media3 handles its own loading and buffering indicators
-            // when useBuiltInControls is true, so we don't need custom ones
+            // Loading indicator
+            if (!_isInitialized)
+              const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
+                ),
+              ),
+            
+            // Buffering indicator
+            if (_isBuffering && _isInitialized)
+              const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
+                ),
+              ),
             
             // Error overlay
             if (_error != null)
@@ -205,61 +379,31 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 ),
               ),
             
-            // Optional: Add custom overlay controls if needed
-            // Media3's built-in controls are comprehensive and professional
+            // Simple overlay with back button and settings
             if (widget.showControls && _error == null)
-              _buildCustomOverlay(),
+              _buildSimpleOverlay(),
+              
+            // Settings panel
+            if (_showSettings)
+              _buildSettingsPanel(),
           ],
         ),
       ),
     );
   }
   
-  Widget _buildCustomOverlay() {
-    // Minimal custom overlay - Media3 handles most controls
+  Widget _buildSimpleOverlay() {
     return Positioned(
       top: 0,
       left: 0,
       right: 0,
-      child: SafeArea(
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.black.withOpacity(0.7),
-                Colors.transparent,
-              ],
-            ),
-          ),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-              ),
-              Expanded(
-                child: Text(
-                  widget.videoTitle ?? 'Video',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildControlsOverlay() {
-    return Positioned.fill(
       child: Container(
+        padding: EdgeInsets.only(
+          top: MediaQuery.of(context).padding.top,
+          left: 16,
+          right: 16,
+          bottom: 16,
+        ),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -267,66 +411,220 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             colors: [
               Colors.black.withOpacity(0.7),
               Colors.transparent,
-              Colors.black.withOpacity(0.7),
+            ],
+          ),
+        ),
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
+            ),
+            Expanded(
+              child: Text(
+                widget.videoTitle ?? 'Video',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            IconButton(
+              onPressed: () {
+                setState(() {
+                  _showSettings = !_showSettings;
+                });
+                if (_showSettings) {
+                  _settingsAnimationController.forward();
+                } else {
+                  _settingsAnimationController.reverse();
+                }
+              },
+              icon: const Icon(Icons.settings, color: Colors.white, size: 24),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildTopControls() {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        padding: EdgeInsets.only(
+          top: MediaQuery.of(context).padding.top,
+          left: 16,
+          right: 16,
+          bottom: 16,
+        ),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.black.withOpacity(0.8),
+              Colors.transparent,
+            ],
+          ),
+        ),
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
+              icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.videoTitle ?? 'Video',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (_performanceData.isNotEmpty)
+                    Text(
+                      'Buffer: $_bufferedPercentage%',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            IconButton(
+              onPressed: () {
+                setState(() {
+                  _showSettings = !_showSettings;
+                });
+                if (_showSettings) {
+                  _settingsAnimationController.forward();
+                } else {
+                  _settingsAnimationController.reverse();
+                }
+                _resetControlsTimer();
+              },
+              icon: const Icon(Icons.settings, color: Colors.white, size: 24),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCenterControls() {
+    return Center(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          // Seek backward
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.5),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              onPressed: _seekBackward,
+              icon: const Icon(Icons.replay_10, color: Colors.white, size: 32),
+            ),
+          ),
+          
+          // Play/Pause
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.5),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              onPressed: _togglePlayPause,
+              icon: Icon(
+                _isPlaying ? Icons.pause : Icons.play_arrow,
+                color: Colors.white,
+                size: 48,
+              ),
+            ),
+          ),
+          
+          // Seek forward
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.5),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              onPressed: _seekForward,
+              icon: const Icon(Icons.forward_10, color: Colors.white, size: 32),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildBottomControls() {
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [
+              Colors.black.withOpacity(0.8),
+              Colors.transparent,
             ],
           ),
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Top bar
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    ),
-                    Expanded(
-                      child: Text(
-                        widget.videoTitle ?? 'Video',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+            // Progress bar with buffer indicator
+            Row(
+              children: [
+                Text(
+                  _formatDuration(_position),
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      // Buffer progress
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 4,
+                          thumbShape: SliderComponentShape.noThumb,
+                          overlayShape: SliderComponentShape.noOverlay,
+                        ),
+                        child: Slider(
+                          value: _duration.inMilliseconds > 0
+                              ? (_bufferedPercentage / 100.0)
+                              : 0.0,
+                          onChanged: null,
+                          activeColor: Colors.white.withOpacity(0.3),
+                          inactiveColor: Colors.white.withOpacity(0.1),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            
-            const Spacer(),
-            
-            // Center play/pause button
-            Center(
-              child: IconButton(
-                onPressed: _togglePlayPause,
-                icon: Icon(
-                  _isPlaying ? Icons.pause : Icons.play_arrow,
-                  color: Colors.white,
-                  size: 64,
-                ),
-              ),
-            ),
-            
-            const Spacer(),
-            
-            // Bottom controls
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  // Progress bar
-                  Row(
-                    children: [
-                      Text(
-                        _formatDuration(_position),
-                        style: const TextStyle(color: Colors.white, fontSize: 12),
-                      ),
-                      Expanded(
+                      // Playback progress
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 4,
+                          thumbColor: _isPlaying ? Colors.blue : Colors.red,
+                          activeTrackColor: _isPlaying ? Colors.blue : Colors.red,
+                          inactiveTrackColor: Colors.transparent,
+                        ),
                         child: Slider(
                           value: _duration.inMilliseconds > 0
                               ? _position.inMilliseconds / _duration.inMilliseconds
@@ -336,46 +634,405 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                               milliseconds: (value * _duration.inMilliseconds).round(),
                             );
                             _controller?.seekTo(position);
+                            _resetControlsTimer();
                           },
-                          activeColor: Colors.red,
-                          inactiveColor: Colors.white.withOpacity(0.3),
                         ),
                       ),
-                      Text(
-                        _formatDuration(_duration),
-                        style: const TextStyle(color: Colors.white, fontSize: 12),
-                      ),
                     ],
                   ),
-                  
-                  // Control buttons
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      IconButton(
-                        onPressed: () => _controller?.setPlaybackSpeed(0.5),
-                        icon: const Text('0.5x', style: TextStyle(color: Colors.white)),
-                      ),
-                      IconButton(
-                        onPressed: () => _controller?.setPlaybackSpeed(1.0),
-                        icon: const Text('1x', style: TextStyle(color: Colors.white)),
-                      ),
-                      IconButton(
-                        onPressed: () => _controller?.setPlaybackSpeed(1.5),
-                        icon: const Text('1.5x', style: TextStyle(color: Colors.white)),
-                      ),
-                      IconButton(
-                        onPressed: () => _controller?.setPlaybackSpeed(2.0),
-                        icon: const Text('2x', style: TextStyle(color: Colors.white)),
-                      ),
-                    ],
+                ),
+                Text(
+                  _formatDuration(_duration),
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 16),
+            
+            // Control buttons row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                // Speed control
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _showSpeedMenu = !_showSpeedMenu;
+                      _showVolumeSlider = false;
+                    });
+                    _resetControlsTimer();
+                  },
+                  icon: Text(
+                    '${_currentSpeed}x',
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
                   ),
-                ],
-              ),
+                ),
+                
+                // Subtitle control
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _showSettings = true;
+                    });
+                    _settingsAnimationController.forward();
+                    _resetControlsTimer();
+                  },
+                  icon: const Icon(Icons.subtitles, color: Colors.white),
+                ),
+                
+                // Volume control
+                IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _showVolumeSlider = !_showVolumeSlider;
+                      _showSpeedMenu = false;
+                    });
+                    _resetControlsTimer();
+                  },
+                  icon: Icon(
+                    _currentVolume > 0.5 ? Icons.volume_up :
+                    _currentVolume > 0 ? Icons.volume_down : Icons.volume_off,
+                    color: Colors.white,
+                  ),
+                ),
+                
+                // Bookmark
+                IconButton(
+                  onPressed: _addBookmark,
+                  icon: const Icon(Icons.bookmark_add, color: Colors.white),
+                ),
+                
+                // Fullscreen (handled by Media3)
+                IconButton(
+                  onPressed: () {
+                    _controller?.enterFullscreen();
+                    _resetControlsTimer();
+                  },
+                  icon: const Icon(Icons.fullscreen, color: Colors.white),
+                ),
+              ],
             ),
           ],
         ),
       ),
+    );
+  }
+  
+  Widget _buildSpeedMenu() {
+    return Positioned(
+      bottom: 120,
+      right: 16,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.8),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildSpeedOption(0.5),
+            _buildSpeedOption(0.75),
+            _buildSpeedOption(1.0),
+            _buildSpeedOption(1.25),
+            _buildSpeedOption(1.5),
+            _buildSpeedOption(2.0),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildSpeedOption(double speed) {
+    final isSelected = _currentSpeed == speed;
+    return InkWell(
+      onTap: () => _changePlaybackSpeed(speed),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.red.withOpacity(0.3) : Colors.transparent,
+        ),
+        child: Text(
+          '${speed}x',
+          style: TextStyle(
+            color: isSelected ? Colors.red : Colors.white,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildVolumeSlider() {
+    return Positioned(
+      bottom: 120,
+      right: 16,
+      child: Container(
+        height: 150,
+        width: 50,
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.8),
+          borderRadius: BorderRadius.circular(25),
+        ),
+        child: Column(
+          children: [
+            const SizedBox(height: 10),
+            Icon(
+              _currentVolume > 0.5 ? Icons.volume_up :
+              _currentVolume > 0 ? Icons.volume_down : Icons.volume_off,
+              color: Colors.white,
+              size: 20,
+            ),
+            Expanded(
+              child: RotatedBox(
+                quarterTurns: -1,
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 3,
+                    thumbColor: Colors.red,
+                    activeTrackColor: Colors.red,
+                    inactiveTrackColor: Colors.white.withOpacity(0.3),
+                  ),
+                  child: Slider(
+                    value: _currentVolume,
+                    onChanged: _changeVolume,
+                    min: 0.0,
+                    max: 1.0,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildSettingsPanel() {
+    return AnimatedBuilder(
+      animation: _settingsSlideAnimation,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(_settingsSlideAnimation.value * 300, 0),
+          child: Positioned(
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: 300,
+            child: Container(
+              color: Colors.black.withOpacity(0.9),
+              child: SafeArea(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'Settings',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            onPressed: () {
+                              setState(() {
+                                _showSettings = false;
+                              });
+                              _settingsAnimationController.reverse();
+                            },
+                            icon: const Icon(Icons.close, color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    const Divider(color: Colors.white24),
+                    
+                    // Video tracks
+                    if (_videoTracks.isNotEmpty) ...[
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text(
+                          'Video Quality',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      ..._videoTracks.asMap().entries.map((entry) => ListTile(
+                        title: Text(
+                          entry.value['name'] ?? 'Unknown',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          '${entry.value['width']}x${entry.value['height']} - ${entry.value['bitrate']} kbps',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        onTap: () async {
+                          // TODO: Implement video track selection (if needed)
+                        },
+                      )),
+                    ],
+                    
+                    // Audio tracks
+                    if (_audioTracks.isNotEmpty) ...[
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text(
+                          'Audio',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      ..._audioTracks.asMap().entries.map((entry) => ListTile(
+                        title: Text(
+                          entry.value['name'] ?? 'Unknown',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          entry.value['language'] ?? 'Unknown language',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        onTap: () async {
+                          await _controller?.setAudioTrack(entry.key);
+                          setState(() {});
+                        },
+                      )),
+                    ],
+                    
+                    // Subtitle tracks - Always show section
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                        'Subtitles',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    if (_subtitleTracks.isNotEmpty) ...[
+                      ..._subtitleTracks.asMap().entries.map((entry) => ListTile(
+                        title: Text(
+                          entry.value['name'] ?? 'Subtitle ${entry.key + 1}',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          entry.value['language'] ?? 'Unknown language',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        onTap: () async {
+                          await _controller?.setSubtitleTrack(entry.key);
+                          setState(() {});
+                        },
+                      )),
+                      ListTile(
+                        title: const Text('Disable Subtitles', style: TextStyle(color: Colors.white)),
+                        onTap: () async {
+                          await _controller?.disableSubtitle();
+                          setState(() {});
+                        },
+                      ),
+                    ] else ...[
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          'No subtitle tracks detected in this video',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      ),
+                    ],
+                    
+                    // Debug information
+                    const Divider(color: Colors.white24),
+                    const Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text(
+                        'Debug Info',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Video Tracks: ${_videoTracks.length}',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                          Text(
+                            'Audio Tracks: ${_audioTracks.length}',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                          Text(
+                            'Subtitle Tracks: ${_subtitleTracks.length}',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                          Text(
+                            'Initialized: $_isInitialized',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    // Performance info
+                    if (_performanceData.isNotEmpty) ...[
+                      const Divider(color: Colors.white24),
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text(
+                          'Performance',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Buffer: $_bufferedPercentage%',
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                            if (_performanceData['width'] != null)
+                              Text(
+                                'Resolution: ${_performanceData['width']}x${_performanceData['height']}',
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
   
@@ -389,7 +1046,13 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // Media3 handles controls internally
+    
+    // Cancel timer
+    _controlsTimer?.cancel();
+    
+    // Dispose animation controllers
+    _controlsAnimationController.dispose();
+    _settingsAnimationController.dispose();
     
     // Cancel subscriptions
     _playingSubscription.cancel();
@@ -397,6 +1060,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _positionSubscription.cancel();
     _errorSubscription.cancel();
     _initializedSubscription.cancel();
+    _performanceSubscription.cancel();
+    _tracksSubscription.cancel();
     
     // Dispose controller
     _controller?.dispose();

@@ -82,52 +82,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Column(
-        children: [
-          // Custom App Bar
-          Container(
-            height: MediaQuery.of(context).padding.top + 56,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.black54, Colors.transparent],
-              ),
-            ),
-            child: SafeArea(
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    onPressed: _onBackPressed,
-                  ),
-                  Expanded(
-                    child: Text(
-                      widget.video.displayName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // Video Player
-          Expanded(
-            child: VideoPlayerWidget(
-              video: widget.video,
-              autoPlay: true,
-              startPosition: _savedPosition,
-              onBack: _onBackPressed,
-              onPositionChanged: _onPositionChanged,
-              onBookmarkAdded: _onBookmarkAdded,
-            ),
-          ),
-        ],
+      body: VideoPlayerWidget(
+        video: widget.video,
+        autoPlay: true,
+        startPosition: _savedPosition,
+        onBack: _onBackPressed,
+        onPositionChanged: _onPositionChanged,
+        onBookmarkAdded: _onBookmarkAdded,
       ),
     );
   }
