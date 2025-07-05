@@ -46,6 +46,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   bool _isPlaying = false;
   bool _isBuffering = false;
   bool _isInitialized = false;
+  bool _showBufferingIndicator = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   String? _error;
@@ -58,6 +59,12 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   double _currentSpeed = 1.0;
   double _currentVolume = 1.0;
   int _bufferedPercentage = 0;
+  
+  // Zoom and pan state
+  double _scaleFactor = 1.0;
+  double _baseScaleFactor = 1.0;
+  Offset _panOffset = Offset.zero;
+  bool _isZoomed = false;
   
   // Animation controllers
   late AnimationController _controlsAnimationController;
@@ -75,6 +82,12 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   
   // Timer for auto-hiding controls
   Timer? _controlsTimer;
+  
+  // Timer for auto-clearing temporary errors
+  Timer? _errorClearTimer;
+  
+  // Timer for buffering indicator delay
+  Timer? _bufferingTimer;
   
   @override
   void initState() {
@@ -132,6 +145,22 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       setState(() {
         _isBuffering = isBuffering;
       });
+      
+      // Only show buffering indicator after a delay to avoid flickering
+      _bufferingTimer?.cancel();
+      if (isBuffering) {
+        _bufferingTimer = Timer(const Duration(milliseconds: 500), () {
+          if (mounted && _isBuffering) {
+            setState(() {
+              _showBufferingIndicator = true;
+            });
+          }
+        });
+      } else {
+        setState(() {
+          _showBufferingIndicator = false;
+        });
+      }
     });
     
     _positionSubscription = _controller!.onPositionChanged.listen((position) {
@@ -148,8 +177,19 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         _error = error;
       });
       
-      if (error != null) {
+      // Only show error dialog for critical errors, not temporary ones
+      if (error != null && _shouldShowErrorDialog(error)) {
         _showErrorDialog(error);
+      } else if (error != null) {
+        // Auto-clear temporary errors after 3 seconds
+        _errorClearTimer?.cancel();
+        _errorClearTimer = Timer(const Duration(seconds: 3), () {
+          if (mounted) {
+            setState(() {
+              _error = null;
+            });
+          }
+        });
       }
     });
     
@@ -267,15 +307,104 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _resetControlsTimer();
   }
   
+  // Zoom and pan gesture handlers
+  void _onScaleStart(ScaleStartDetails details) {
+    // Store initial scale factor when gesture starts
+    _baseScaleFactor = _scaleFactor;
+  }
+  
+  void _onScaleUpdate(ScaleUpdateDetails details) {
+    setState(() {
+      // Handle zoom with more controlled scaling
+      // Use base scale factor and apply the gesture scale incrementally
+      _scaleFactor = (_baseScaleFactor * details.scale).clamp(1.0, 3.0);
+      
+      // Handle pan only when zoomed
+      if (_scaleFactor > 1.0) {
+        _isZoomed = true;
+        
+        // Calculate pan limits based on scale factor
+        final screenSize = MediaQuery.of(context).size;
+        final maxPanX = (screenSize.width * (_scaleFactor - 1)) / 2;
+        final maxPanY = (screenSize.height * (_scaleFactor - 1)) / 2;
+        
+        // Update pan offset with limits
+        _panOffset = Offset(
+          (_panOffset.dx + details.focalPointDelta.dx).clamp(-maxPanX, maxPanX),
+          (_panOffset.dy + details.focalPointDelta.dy).clamp(-maxPanY, maxPanY),
+        );
+      } else {
+        _isZoomed = false;
+        _panOffset = Offset.zero;
+      }
+    });
+  }
+  
+  void _onScaleEnd(ScaleEndDetails details) {
+    // Reset to normal if scale is close to 1.0
+    if (_scaleFactor < 1.1) {
+      setState(() {
+        _scaleFactor = 1.0;
+        _baseScaleFactor = 1.0;
+        _panOffset = Offset.zero;
+        _isZoomed = false;
+      });
+    } else {
+      // Update base scale factor for next gesture
+      _baseScaleFactor = _scaleFactor;
+    }
+  }
+  
+  void _resetZoom() {
+    setState(() {
+      _scaleFactor = 1.0;
+      _baseScaleFactor = 1.0;
+      _panOffset = Offset.zero;
+      _isZoomed = false;
+    });
+  }
+  
+  bool _shouldShowErrorDialog(String error) {
+    // Don't show dialog for temporary network issues or minor errors
+    final lowercaseError = error.toLowerCase();
+    
+    // Skip common temporary errors
+    if (lowercaseError.contains('network') ||
+        lowercaseError.contains('timeout') ||
+        lowercaseError.contains('buffering') ||
+        lowercaseError.contains('loading') ||
+        lowercaseError.contains('temporary')) {
+      return false;
+    }
+    
+    // Only show for critical errors
+    return lowercaseError.contains('failed') ||
+           lowercaseError.contains('corrupt') ||
+           lowercaseError.contains('unsupported') ||
+           lowercaseError.contains('not found');
+  }
+  
   void _showErrorDialog(String error) {
+    // Prevent multiple error dialogs
+    if (Navigator.of(context).canPop()) {
+      return;
+    }
+    
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (context) => AlertDialog(
         title: const Text('Playback Error'),
         content: Text(error),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () {
+              Navigator.of(context).pop();
+              // Clear error state when dialog is dismissed
+              setState(() {
+                _error = null;
+              });
+            },
             child: const Text('OK'),
           ),
         ],
@@ -307,19 +436,32 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         onDoubleTap: _togglePlayPause,
         child: Stack(
           children: [
-            // Media3 Platform View with custom controls
-            Container(
-              width: double.infinity,
-              height: double.infinity,
-              child: AndroidView(
-                viewType: 'media3_player_view',
-                creationParams: {
-                  'videoPath': widget.videoPath,
-                  'autoPlay': widget.autoPlay,
-                  'startPosition': widget.startPosition?.inMilliseconds,
-                  'useBuiltInControls': true, // Use Media3's built-in controls for now
-                },
-                creationParamsCodec: const StandardMessageCodec(),
+            // Media3 Platform View with zoom and pan support
+            ClipRect(
+              child: Transform(
+                transform: Matrix4.identity()
+                  ..translate(_panOffset.dx, _panOffset.dy)
+                  ..scale(_scaleFactor),
+                alignment: Alignment.center,
+                child: GestureDetector(
+                  onScaleStart: _onScaleStart,
+                  onScaleUpdate: _onScaleUpdate,
+                  onScaleEnd: _onScaleEnd,
+                  child: Container(
+                    width: double.infinity,
+                    height: double.infinity,
+                    child: AndroidView(
+                      viewType: 'media3_player_view',
+                      creationParams: {
+                        'videoPath': widget.videoPath,
+                        'autoPlay': widget.autoPlay,
+                        'startPosition': widget.startPosition?.inMilliseconds,
+                        'useBuiltInControls': true, // Use Media3's built-in controls for now
+                      },
+                      creationParamsCodec: const StandardMessageCodec(),
+                    ),
+                  ),
+                ),
               ),
             ),
             
@@ -331,16 +473,16 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 ),
               ),
             
-            // Buffering indicator
-            if (_isBuffering && _isInitialized)
+            // Buffering indicator (only show after delay to avoid flickering)
+            if (_showBufferingIndicator && _isInitialized)
               const Center(
                 child: CircularProgressIndicator(
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
                 ),
               ),
             
-            // Error overlay
-            if (_error != null)
+            // Error overlay (only for critical errors)
+            if (_error != null && _shouldShowErrorDialog(_error!))
               Center(
                 child: Container(
                   padding: const EdgeInsets.all(20),
@@ -374,6 +516,15 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                         ),
                         textAlign: TextAlign.center,
                       ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _error = null;
+                          });
+                        },
+                        child: const Text('Dismiss'),
+                      ),
                     ],
                   ),
                 ),
@@ -386,6 +537,10 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             // Settings panel
             if (_showSettings)
               _buildSettingsPanel(),
+              
+            // Zoom indicator
+            if (_isZoomed)
+              _buildZoomIndicator(),
           ],
         ),
       ),
@@ -502,6 +657,13 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 ],
               ),
             ),
+            // Zoom reset button (only show when zoomed)
+            if (_isZoomed)
+              IconButton(
+                onPressed: _resetZoom,
+                icon: const Icon(Icons.zoom_out_map, color: Colors.white, size: 24),
+                tooltip: 'Reset Zoom',
+              ),
             IconButton(
               onPressed: () {
                 setState(() {
@@ -990,6 +1152,15 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                             'Initialized: $_isInitialized',
                             style: const TextStyle(color: Colors.white70),
                           ),
+                          Text(
+                            'Zoom: ${(_scaleFactor * 100).toInt()}%',
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                          if (_isZoomed)
+                            Text(
+                              'Pan: (${_panOffset.dx.toInt()}, ${_panOffset.dy.toInt()})',
+                              style: const TextStyle(color: Colors.white70),
+                            ),
                         ],
                       ),
                     ),
@@ -1036,6 +1207,39 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     );
   }
   
+  Widget _buildZoomIndicator() {
+    return Positioned(
+      top: 100,
+      left: 20,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.zoom_in,
+              color: Colors.white,
+              size: 16,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${(_scaleFactor * 100).toInt()}%',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final minutes = twoDigits(duration.inMinutes.remainder(60));
@@ -1047,8 +1251,10 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     
-    // Cancel timer
+    // Cancel timers
     _controlsTimer?.cancel();
+    _errorClearTimer?.cancel();
+    _bufferingTimer?.cancel();
     
     // Dispose animation controllers
     _controlsAnimationController.dispose();
