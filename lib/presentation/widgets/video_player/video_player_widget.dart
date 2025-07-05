@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../data/models/video_model.dart';
-import '../../../core/video_player/exoplayer_video_player.dart';
-import '../nextplayer_view.dart';
+import '../media3_player_widget.dart';
 
 class VideoPlayerWidget extends StatelessWidget {
   final VideoModel video;
@@ -23,28 +22,16 @@ class VideoPlayerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (Theme.of(context).platform == TargetPlatform.android) {
-      print('VIDEO PLAYER: Using NextPlayerView (Native Android ExoPlayer)');
-      return NextPlayerView(
-        videoPath: video.path,
-        onViewCreated: (controller) {
-          print('VIDEO PLAYER: NextPlayerView created successfully');
-          if (autoPlay) controller.play();
-          // Optionally: wire up event handlers here if needed
-        },
-      );
-    } else {
-      print('VIDEO PLAYER: Using ExoPlayerVideoPlayer (Flutter implementation)');
-      return ExoPlayerVideoPlayer(
-        videoPath: video.path,
-        videoTitle: video.displayName,
-        autoPlay: autoPlay,
-        startPosition: startPosition,
-        onBack: onBack,
-        onPositionChanged: onPositionChanged,
-        onBookmarkAdded: onBookmarkAdded,
-        showControls: true,
-      );
-    }
+    print('VIDEO PLAYER: Using Media3PlayerWidget (Clean AndroidX Media3 Implementation)');
+    return Media3PlayerWidget(
+      videoPath: video.path,
+      videoTitle: video.displayName,
+      autoPlay: autoPlay,
+      startPosition: startPosition,
+      onBack: onBack,
+      onPositionChanged: onPositionChanged,
+      onBookmarkAdded: onBookmarkAdded,
+      showControls: true,
+    );
   }
 }
