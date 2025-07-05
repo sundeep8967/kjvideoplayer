@@ -57,36 +57,54 @@ class Media3PlayerView(
     }
     
     private fun createMedia3Player(context: Context): ExoPlayer {
-        // Conservative LoadControl to prevent pipeline overflow
+        // Optimized LoadControl based on AndroidX Media3 best practices
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                1000,      // Min buffer - 1 second
-                5000,      // Max buffer - 5 seconds  
-                500,       // Buffer for playback
-                1000       // Buffer for rebuffer
+                DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,           // 50s min buffer
+                DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,           // 50s max buffer  
+                DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,  // 2.5s for playback
+                DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS // 5s after rebuffer
             )
-            .setTargetBufferBytes(2_000_000) // 2MB buffer limit
+            .setTargetBufferBytes(DefaultLoadControl.DEFAULT_TARGET_BUFFER_BYTES) // Dynamic buffer sizing
             .setPrioritizeTimeOverSizeThresholds(true)
-            .setBackBuffer(2000, false)
+            .setBackBuffer(DefaultLoadControl.DEFAULT_BACK_BUFFER_DURATION_MS, true) // Enable back buffer
             .build()
         
-        // Track selector with reasonable limits
+        // Enhanced track selector with adaptive bitrate
         val trackSelector = DefaultTrackSelector(context).apply {
             setParameters(
                 buildUponParameters()
-                    .setMaxVideoSize(1920, 1080) // Max 1080p
-                    .setMaxVideoBitrate(5_000_000) // Max 5Mbps
+                    .setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE) // No resolution limit - let adaptive streaming decide
+                    .setMaxVideoBitrate(Int.MAX_VALUE) // No bitrate limit - adaptive streaming
                     .setPreferredAudioLanguage("en")
                     .setForceLowestBitrate(false)
+                    .setAllowVideoMixedMimeTypeAdaptiveness(true) // Better codec switching
+                    .setAllowAudioMixedMimeTypeAdaptiveness(true)
+                    .setAllowVideoNonSeamlessAdaptiveness(true) // Smoother quality changes
+                    .setTunnelingEnabled(false) // Disable tunneling for better compatibility
             )
         }
         
+        // Enhanced ExoPlayer with performance optimizations
         return ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
             .setTrackSelector(trackSelector)
-            .setSeekBackIncrementMs(10_000)
-            .setSeekForwardIncrementMs(10_000)
-            .build()
+            .setSeekBackIncrementMs(10_000) // 10s seek back
+            .setSeekForwardIncrementMs(30_000) // 30s seek forward
+            .setHandleAudioBecomingNoisy(true) // Auto-pause on headphone disconnect
+            .setWakeMode(C.WAKE_MODE_NETWORK) // Optimize for network playback
+            .setUseLazyPreparation(true) // Faster startup
+            .build().apply {
+                // Performance optimizations
+                setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING)
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(C.USAGE_MEDIA)
+                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                        .build(),
+                    true // Handle audio focus
+                )
+            }
     }
     
     private fun setupPlayerView() {
@@ -132,7 +150,9 @@ class Media3PlayerView(
                 channel.invokeMethod("onPlaybackStateChanged", mapOf(
                     "state" to stateString,
                     "isPlaying" to exoPlayer.isPlaying,
-                    "isBuffering" to (playbackState == Player.STATE_BUFFERING)
+                    "isBuffering" to (playbackState == Player.STATE_BUFFERING),
+                    "bufferedPercentage" to exoPlayer.bufferedPercentage,
+                    "bufferedPosition" to exoPlayer.bufferedPosition
                 ))
                 
                 if (playbackState == Player.STATE_READY && !isInitialized) {
@@ -144,7 +164,14 @@ class Media3PlayerView(
             override fun onPlayerError(error: PlaybackException) {
                 channel.invokeMethod("onError", mapOf(
                     "error" to error.message,
-                    "errorCode" to error.errorCode
+                    "errorCode" to error.errorCode,
+                    "errorType" to when (error.errorCode) {
+                        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> "NETWORK_ERROR"
+                        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> "FILE_NOT_FOUND"
+                        PlaybackException.ERROR_CODE_DECODING_FAILED -> "DECODING_ERROR"
+                        PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED -> "AUDIO_ERROR"
+                        else -> "UNKNOWN_ERROR"
+                    }
                 ))
             }
             
@@ -162,7 +189,53 @@ class Media3PlayerView(
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 channel.invokeMethod("onVideoSizeChanged", mapOf(
                     "width" to videoSize.width,
-                    "height" to videoSize.height
+                    "height" to videoSize.height,
+                    "pixelWidthHeightRatio" to videoSize.pixelWidthHeightRatio
+                ))
+            }
+            
+            override fun onRenderedFirstFrame() {
+                channel.invokeMethod("onFirstFrameRendered", null)
+            }
+            
+            override fun onLoadingChanged(isLoading: Boolean) {
+                channel.invokeMethod("onLoadingChanged", mapOf(
+                    "isLoading" to isLoading
+                ))
+            }
+            
+            override fun onTracksChanged(tracks: Tracks) {
+                val videoTracks = mutableListOf<Map<String, Any>>()
+                val audioTracks = mutableListOf<Map<String, Any>>()
+                
+                for (trackGroup in tracks.groups) {
+                    if (trackGroup.length > 0) {
+                        val trackFormat = trackGroup.getTrackFormat(0)
+                        when {
+                            trackFormat.sampleMimeType?.startsWith("video/") == true -> {
+                                videoTracks.add(mapOf(
+                                    "width" to (trackFormat.width ?: 0),
+                                    "height" to (trackFormat.height ?: 0),
+                                    "bitrate" to (trackFormat.bitrate ?: 0),
+                                    "frameRate" to (trackFormat.frameRate ?: 0f),
+                                    "codec" to (trackFormat.codecs ?: "unknown")
+                                ))
+                            }
+                            trackFormat.sampleMimeType?.startsWith("audio/") == true -> {
+                                audioTracks.add(mapOf(
+                                    "bitrate" to (trackFormat.bitrate ?: 0),
+                                    "sampleRate" to (trackFormat.sampleRate ?: 0),
+                                    "channelCount" to (trackFormat.channelCount ?: 0),
+                                    "codec" to (trackFormat.codecs ?: "unknown")
+                                ))
+                            }
+                        }
+                    }
+                }
+                
+                channel.invokeMethod("onTracksChanged", mapOf(
+                    "videoTracks" to videoTracks,
+                    "audioTracks" to audioTracks
                 ))
             }
         })

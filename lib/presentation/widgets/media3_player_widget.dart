@@ -41,11 +41,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   late StreamSubscription _initializedSubscription;
   
   // UI State
-  bool _controlsVisible = true;
-  Timer? _hideControlsTimer;
-  bool _isInitialized = false;
   bool _isPlaying = false;
-  bool _isBuffering = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   String? _error;
@@ -69,16 +65,10 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       setState(() {
         _isPlaying = isPlaying;
       });
-      
-      if (isPlaying && widget.showControls) {
-        _startHideControlsTimer();
-      }
     });
     
     _bufferingSubscription = _controller!.onBufferingChanged.listen((isBuffering) {
-      setState(() {
-        _isBuffering = isBuffering;
-      });
+      // Media3 handles buffering indicators internally
     });
     
     _positionSubscription = _controller!.onPositionChanged.listen((position) {
@@ -101,9 +91,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     });
     
     _initializedSubscription = _controller!.onInitialized.listen((_) {
-      setState(() {
-        _isInitialized = true;
-      });
+      // Media3 handles initialization internally
     });
   }
   
@@ -117,23 +105,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     }
   }
   
-  void _showControls() {
-    setState(() {
-      _controlsVisible = true;
-    });
-    _startHideControlsTimer();
-  }
-  
-  void _startHideControlsTimer() {
-    _hideControlsTimer?.cancel();
-    _hideControlsTimer = Timer(const Duration(seconds: 3), () {
-      if (_isPlaying && widget.showControls) {
-        setState(() {
-          _controlsVisible = false;
-        });
-      }
-    });
-  }
+  // Media3 handles controls internally, so these methods are not needed
   
   void _showErrorDialog(String error) {
     showDialog(
@@ -171,7 +143,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     return Scaffold(
       backgroundColor: Colors.black,
       body: GestureDetector(
-        onTap: widget.showControls ? _showControls : null,
+        onTap: null, // Media3 handles controls internally
         child: Stack(
           children: [
             // Media3 Platform View with built-in controls
@@ -190,21 +162,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
               ),
             ),
             
-            // Loading indicator
-            if (!_isInitialized)
-              const Center(
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                ),
-              ),
-            
-            // Buffering indicator
-            if (_isBuffering && _isInitialized)
-              const Center(
-                child: CircularProgressIndicator(
-                  color: Colors.white,
-                ),
-              ),
+            // Note: Media3 handles its own loading and buffering indicators
+            // when useBuiltInControls is true, so we don't need custom ones
             
             // Error overlay
             if (_error != null)
@@ -248,7 +207,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             
             // Optional: Add custom overlay controls if needed
             // Media3's built-in controls are comprehensive and professional
-            if (widget.showControls && _isInitialized && _error == null)
+            if (widget.showControls && _error == null)
               _buildCustomOverlay(),
           ],
         ),
@@ -430,7 +389,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _hideControlsTimer?.cancel();
+    // Media3 handles controls internally
     
     // Cancel subscriptions
     _playingSubscription.cancel();

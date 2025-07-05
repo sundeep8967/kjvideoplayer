@@ -19,6 +19,8 @@ class Media3PlayerController {
   final StreamController<Duration> _positionController = StreamController<Duration>.broadcast();
   final StreamController<String?> _errorController = StreamController<String?>.broadcast();
   final StreamController<void> _initializedController = StreamController<void>.broadcast();
+  final StreamController<Map<String, dynamic>> _performanceController = StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _tracksController = StreamController<Map<String, dynamic>>.broadcast();
   
   // Getters
   bool get isInitialized => _isInitialized;
@@ -34,6 +36,8 @@ class Media3PlayerController {
   Stream<Duration> get onPositionChanged => _positionController.stream;
   Stream<String?> get onError => _errorController.stream;
   Stream<void> get onInitialized => _initializedController.stream;
+  Stream<Map<String, dynamic>> get onPerformanceUpdate => _performanceController.stream;
+  Stream<Map<String, dynamic>> get onTracksChanged => _tracksController.stream;
   
   Media3PlayerController() {
     _setupMethodCallHandler();
@@ -56,6 +60,21 @@ class Media3PlayerController {
           break;
         case 'onVideoSizeChanged':
           _handleVideoSizeChanged(call.arguments);
+          break;
+        case 'onFirstFrameRendered':
+          _handleFirstFrameRendered();
+          break;
+        case 'onLoadingChanged':
+          _handleLoadingChanged(call.arguments);
+          break;
+        case 'onTracksChanged':
+          _handleTracksChanged(call.arguments);
+          break;
+        case 'onControlsVisibilityChanged':
+          _handleControlsVisibilityChanged(call.arguments);
+          break;
+        case 'onFullscreenToggle':
+          _handleFullscreenToggle(call.arguments);
           break;
       }
     });
@@ -188,11 +207,24 @@ class Media3PlayerController {
     final state = args['state'] as String?;
     _isPlaying = args['isPlaying'] as bool? ?? false;
     _isBuffering = args['isBuffering'] as bool? ?? false;
+    final bufferedPercentage = args['bufferedPercentage'] as int? ?? 0;
+    final bufferedPosition = args['bufferedPosition'] as int? ?? 0;
     
     _playingController.add(_isPlaying);
     _bufferingController.add(_isBuffering);
     
-    print('Media3Player: State changed to $state, Playing: $_isPlaying, Buffering: $_isBuffering');
+    // Enhanced performance monitoring
+    _performanceController.add({
+      'type': 'playbackStateChanged',
+      'state': state,
+      'isPlaying': _isPlaying,
+      'isBuffering': _isBuffering,
+      'bufferedPercentage': bufferedPercentage,
+      'bufferedPosition': bufferedPosition,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+    
+    print('Media3Player: State changed to $state, Playing: $_isPlaying, Buffering: $_isBuffering, Buffer: $bufferedPercentage%');
   }
   
   void _handlePositionChanged(Map<String, dynamic> args) {
@@ -220,7 +252,65 @@ class Media3PlayerController {
   void _handleVideoSizeChanged(Map<String, dynamic> args) {
     final width = args['width'] as int? ?? 0;
     final height = args['height'] as int? ?? 0;
-    print('Media3Player: Video size changed to ${width}x${height}');
+    final pixelRatio = args['pixelWidthHeightRatio'] as double? ?? 1.0;
+    
+    _performanceController.add({
+      'type': 'videoSizeChanged',
+      'width': width,
+      'height': height,
+      'pixelWidthHeightRatio': pixelRatio,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+    
+    print('Media3Player: Video size changed to ${width}x${height} (ratio: $pixelRatio)');
+  }
+  
+  void _handleFirstFrameRendered() {
+    _performanceController.add({
+      'type': 'firstFrameRendered',
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+    print('Media3Player: First frame rendered');
+  }
+  
+  void _handleLoadingChanged(Map<String, dynamic> args) {
+    final isLoading = args['isLoading'] as bool? ?? false;
+    _performanceController.add({
+      'type': 'loadingChanged',
+      'isLoading': isLoading,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+  
+  void _handleTracksChanged(Map<String, dynamic> args) {
+    final videoTracks = args['videoTracks'] as List<dynamic>? ?? [];
+    final audioTracks = args['audioTracks'] as List<dynamic>? ?? [];
+    
+    _tracksController.add({
+      'videoTracks': videoTracks,
+      'audioTracks': audioTracks,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+    
+    print('Media3Player: Tracks changed - Video: ${videoTracks.length}, Audio: ${audioTracks.length}');
+  }
+  
+  void _handleControlsVisibilityChanged(Map<String, dynamic> args) {
+    final visible = args['visible'] as bool? ?? false;
+    _performanceController.add({
+      'type': 'controlsVisibilityChanged',
+      'visible': visible,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
+  
+  void _handleFullscreenToggle(Map<String, dynamic> args) {
+    final isFullscreen = args['isFullscreen'] as bool? ?? false;
+    _performanceController.add({
+      'type': 'fullscreenToggle',
+      'isFullscreen': isFullscreen,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
   }
   
   /// Dispose the controller
@@ -230,6 +320,8 @@ class Media3PlayerController {
     _positionController.close();
     _errorController.close();
     _initializedController.close();
+    _performanceController.close();
+    _tracksController.close();
     
     // Dispose the native player
     _channel.invokeMethod('dispose').catchError((e) {
