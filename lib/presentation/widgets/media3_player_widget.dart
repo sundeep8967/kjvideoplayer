@@ -951,7 +951,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             IconButton(
               onPressed: () {
                 setState(() {
-                  _showSettings = true;
+                  _showSettings = true; // Open the main settings panel
                 });
                 _settingsAnimationController.forward();
                 _resetControlsTimer();
@@ -959,6 +959,36 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
               icon: const Icon(Icons.subtitles, color: Colors.white, size: 24),
               tooltip: 'Subtitles',
             ),
+            // Audio Track Selection Button
+            if (_audioTracks.isNotEmpty) // Only show if there are audio tracks
+              PopupMenuButton<int>(
+                icon: const Icon(Icons.audiotrack, color: Colors.white, size: 24),
+                tooltip: 'Select Audio Track',
+                onSelected: (int trackIndex) async {
+                  await _controller?.setAudioTrack(trackIndex);
+                  setState(() {
+                    // Potentially update UI to show current track, if needed
+                  });
+                  _resetControlsTimer();
+                },
+                itemBuilder: (BuildContext context) {
+                  return _audioTracks.asMap().entries.map((entry) {
+                    final int trackIndex = entry.key;
+                    final Map<String, dynamic> trackInfo = entry.value;
+                    // TODO: Determine how to show which track is currently active.
+                    // This might require getting the current audio track index from the controller.
+                    // For now, just list them.
+                    return PopupMenuItem<int>(
+                      value: trackIndex,
+                      child: Text(
+                        trackInfo['name'] ?? trackInfo['language'] ?? 'Track ${trackIndex + 1}',
+                        style: const TextStyle(color: Colors.black), // PopupMenu items are usually on a light background
+                      ),
+                    );
+                  }).toList();
+                },
+                offset: const Offset(0, 40), // Adjust offset as needed
+              ),
             // Settings button
             IconButton(
               onPressed: () {
