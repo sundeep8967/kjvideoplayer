@@ -79,6 +79,10 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   
   // Animation controllers
   late AnimationController _controlsAnimationController;
+  
+  // Zoom indicator state
+  bool _showLeftZoomIndicator = false;
+  Timer? _leftZoomIndicatorTimer;
   late AnimationController _settingsAnimationController;
   late Animation<double> _controlsOpacity;
   late Animation<double> _settingsSlideAnimation;
@@ -412,8 +416,16 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   
   // Zoom and pan gesture handlers
   void _onScaleStart(ScaleStartDetails details) {
+    if (!mounted) return;
     // Store initial scale factor when gesture starts
     _baseScaleFactor = _scaleFactor;
+    // Show zoom indicator when zoom gesture starts
+    setState(() {
+      _showLeftZoomIndicator = true;
+    });
+    // Cancel any existing timer
+    _leftZoomIndicatorTimer?.cancel();
+    debugPrint('[_Media3PlayerWidgetState] Scale gesture started. Base scale: $_baseScaleFactor');
   }
   
   void _onScaleUpdate(ScaleUpdateDetails details) {
@@ -484,6 +496,19 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         // Let's rely on _onScaleUpdate for _isZoomed during the gesture.
          debugPrint('[_Media3PlayerWidgetState] Zoom gesture ended, remaining in Custom. Scale: $_scaleFactor, Pan: $_panOffset');
       }
+      
+      // Show left zoom indicator when fingers are removed
+      setState(() {
+        _showLeftZoomIndicator = true;
+      });
+      _leftZoomIndicatorTimer?.cancel();
+      _leftZoomIndicatorTimer = Timer(const Duration(seconds: 3), () {
+        if (mounted) {
+          setState(() {
+            _showLeftZoomIndicator = false;
+          });
+        }
+      });
     }
   }
   
@@ -510,7 +535,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       _zoomModeToastMessage = message;
     });
     _zoomModeToastTimer?.cancel();
-    _zoomModeToastTimer = Timer(const Duration(seconds: 2), () {
+    _zoomModeToastTimer = Timer(const Duration(seconds: 3), () {
       if (mounted) {
         setState(() {
           _zoomModeToastMessage = null;
@@ -772,8 +797,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             if (_showSettings)
               _buildSettingsPanel(),
               
-          // Zoom indicator (for pinch-zoom level)
-          if (_isZoomed && _currentZoomMode == ZoomMode.custom) // Only show for custom pinch zoom
+          // Zoom indicator (for pinch-zoom level) - shows for 3 seconds after finger release
+          if (_isZoomed && _currentZoomMode == ZoomMode.custom && _showLeftZoomIndicator)
             _buildZoomIndicator(),
 
           // Zoom Mode Toast
