@@ -1,7 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import '../../core/platform/media3_player_controller.dart';
+
+// Enum for Zoom Modes
+enum ZoomMode { fit, stretch, zoomToFill, custom }
 
 /// Media3 Player Widget - Enhanced implementation with comprehensive controls
 class Media3PlayerWidget extends StatefulWidget {
@@ -136,10 +140,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _controlsAnimationController.forward();
   }
   
-import 'package:flutter/foundation.dart'; // Import for debugPrint
 
 // Enum for Zoom Modes
-enum ZoomMode { fit, stretch, zoomToFill, custom }
 
   void _initializePlayer([int? viewId]) {
     debugPrint('[_Media3PlayerWidgetState] _initializePlayer called with viewId: $viewId');
@@ -539,7 +541,7 @@ enum ZoomMode { fit, stretch, zoomToFill, custom }
       _isZoomed = false;
     });
     _controller?.setResizeMode(nativeModeString);
-    _showZoomToast(toastMessage); // Show toast after mode is set
+    _showZoomToast(nativeModeString); // Show toast after mode is set
 
     debugPrint('[_Media3PlayerWidgetState] Zoom mode cycled to: $_currentZoomMode, native mode: $nativeModeString');
     _resetControlsTimer();
