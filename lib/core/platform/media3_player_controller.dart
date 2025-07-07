@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
 
 /// Media3 Player Controller - Clean implementation without NextPlayer
 class Media3PlayerController {
@@ -47,6 +46,7 @@ class Media3PlayerController {
     _setupMethodCallHandler();
 }
   
+import 'package:flutter/foundation.dart'; // Import for debugPrint
 
   void _setupMethodCallHandler() {
     _channel.setMethodCallHandler((call) async {
