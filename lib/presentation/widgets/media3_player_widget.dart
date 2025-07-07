@@ -1,11 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
 import '../../core/platform/media3_player_controller.dart';
-
-// Enum for Zoom Modes
-enum ZoomMode { fit, stretch, zoomToFill, custom }
 
 /// Media3 Player Widget - Enhanced implementation with comprehensive controls
 class Media3PlayerWidget extends StatefulWidget {
@@ -90,6 +86,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   
   // Performance monitoring
   Map<String, dynamic> _performanceData = {};
+  String? _zoomModeToastMessage; // For displaying zoom mode name
+  Timer? _zoomModeToastTimer;   // Timer for the toast message
   
   // Timer for auto-hiding controls
   Timer? _controlsTimer;
@@ -138,7 +136,10 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _controlsAnimationController.forward();
   }
   
+import 'package:flutter/foundation.dart'; // Import for debugPrint
 
+// Enum for Zoom Modes
+enum ZoomMode { fit, stretch, zoomToFill, custom }
 
   void _initializePlayer([int? viewId]) {
     debugPrint('[_Media3PlayerWidgetState] _initializePlayer called with viewId: $viewId');
@@ -416,10 +417,9 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   void _onScaleUpdate(ScaleUpdateDetails details) {
     if (!mounted) return;
     setState(() {
-      _scaleFactor = (_baseScaleFactor * details.scale).clamp(0.5, 3.0);
+      _scaleFactor = (_baseScaleFactor * details.scale).clamp(0.5, 3.0); // Allow zoom out to 50%
       
-      if (_scaleFactor > 1.0) {
-        // _isZoomed will be true if _scaleFactor > 1.0
+      if (_scaleFactor > 1.0 || _scaleFactor < 1.0) { // Pan only if zoomed in or out
         final screenSize = MediaQuery.of(context).size;
         final maxPanX = (screenSize.width * (_scaleFactor - 1)) / 2;
         final maxPanY = (screenSize.height * (_scaleFactor - 1)) / 2;
@@ -433,31 +433,44 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         _panOffset = Offset.zero;
       }
       // If scale or pan happens, it's custom zoom
-      if (_scaleFactor != 1.0 || _panOffset != Offset.zero) {
+      if ((_scaleFactor - 1.0).abs() > 0.01 || _panOffset != Offset.zero) { // Use a small epsilon for float comparison
          _currentZoomMode = ZoomMode.custom;
-         debugPrint('[_Media3PlayerWidgetState] Pinch zoom detected, mode set to Custom. Scale: $_scaleFactor');
+         debugPrint('[_Media3PlayerWidgetState] Pinch zoom detected, mode set to Custom. Scale: $_scaleFactor, Pan: $_panOffset');
       }
-       _isZoomed = _scaleFactor != 1.0 || _panOffset != Offset.zero; // Update _isZoomed based on actual state
+      _isZoomed = (_scaleFactor - 1.0).abs() > 0.01 || _panOffset != Offset.zero; // Update _isZoomed based on actual state
     });
   }
   
   void _onScaleEnd(ScaleEndDetails details) {
     if (!mounted) return;
-    setState(() {
-      if (_scaleFactor < 0.55 && (_panOffset.dx.abs() < 1 && _panOffset.dy.abs() < 1)) {
-        // If zoom is very close to 0.5 and no significant pan, reset to fit.
-        _resetZoom(); // This will also set mode to fit and call native resize.
-      } else {
-        // Save the current scale factor as the new base for future gestures
-        _baseScaleFactor = _scaleFactor;
-        // Update _isZoomed based on actual state
-        _isZoomed = _scaleFactor != 1.0 || _panOffset != Offset.zero;
-        // Set to custom zoom mode if user has zoomed
-        if (_scaleFactor != 1.0) {
-          _currentZoomMode = ZoomMode.custom;
-        }
+
+    // If, after the gesture, the scale is very close to 1.0 and pan is negligible,
+    // then consider it a reset to the default state (which is Fit mode).
+    bool isEffectivelyReset = (_scaleFactor - 1.0).abs() < 0.05 &&
+                              (_panOffset.dx.abs() < 1 && _panOffset.dy.abs() < 1);
+
+    if (isEffectivelyReset) {
+      debugPrint('[_Media3PlayerWidgetState] Scale ended very close to 1.0, resetting to Fit mode. Scale: $_scaleFactor');
+      _resetZoom(); // _resetZoom also sets mode to fit and calls native resize.
+    } else {
+      // Otherwise, the current scale (_scaleFactor can be < 1.0 here) is the new base.
+      _baseScaleFactor = _scaleFactor;
+      // _isZoomed should be true if scale is not 1.0 OR if there's panning.
+      _isZoomed = (_scaleFactor - 1.0).abs() > 0.01 || _panOffset != Offset.zero;
+
+      // Ensure mode is custom if any transform is applied and not already set
+      if (_currentZoomMode != ZoomMode.custom && _isZoomed) {
+          setState(() { // Ensure setState is called if mode changes
+              _currentZoomMode = ZoomMode.custom;
+              debugPrint('[_Media3PlayerWidgetState] Zoom ended, mode explicitly set to Custom. Scale: $_scaleFactor, Pan: $_panOffset');
+          });
+      } else if (!_isZoomed && _currentZoomMode == ZoomMode.custom) {
+        // If somehow it ended up not zoomed but still in custom mode, reset it.
+        // This case should ideally be covered by isEffectivelyReset.
+         debugPrint('[_Media3PlayerWidgetState] Scale ended at 1.0 from custom, resetting to Fit mode. Scale: $_scaleFactor');
+        _resetZoom();
       }
-    });
+    }
   }
   
   void _resetZoom({bool switchToFit = true}) {
@@ -471,7 +484,23 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       if (switchToFit) {
         _currentZoomMode = ZoomMode.fit;
         _controller?.setResizeMode('fit');
+        _showZoomToast('Fit to Screen');
         debugPrint('[_Media3PlayerWidgetState] Zoom reset to FIT. Scale: $_scaleFactor');
+      }
+    });
+  }
+
+  void _showZoomToast(String message) {
+    if (!mounted) return;
+    setState(() {
+      _zoomModeToastMessage = message;
+    });
+    _zoomModeToastTimer?.cancel();
+    _zoomModeToastTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) {
+        setState(() {
+          _zoomModeToastMessage = null;
+        });
       }
     });
   }
@@ -502,15 +531,16 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         break;
     }
 
-    setState(() {
+    setState(() { // Initial setState to update mode and reset scale/pan
       _currentZoomMode = nextMode;
-      // When changing predefined zoom modes, always reset Flutter's transform scale/pan
       _scaleFactor = 1.0;
       _baseScaleFactor = 1.0;
       _panOffset = Offset.zero;
       _isZoomed = false;
     });
     _controller?.setResizeMode(nativeModeString);
+    _showZoomToast(toastMessage); // Show toast after mode is set
+
     debugPrint('[_Media3PlayerWidgetState] Zoom mode cycled to: $_currentZoomMode, native mode: $nativeModeString');
     _resetControlsTimer();
   }
@@ -728,9 +758,30 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             if (_showSettings)
               _buildSettingsPanel(),
               
-          // Zoom indicator
-          if (_isZoomed)
+          // Zoom indicator (for pinch-zoom level)
+          if (_isZoomed && _currentZoomMode == ZoomMode.custom) // Only show for custom pinch zoom
             _buildZoomIndicator(),
+
+          // Zoom Mode Toast
+          AnimatedOpacity(
+            opacity: _zoomModeToastMessage != null ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            child: _zoomModeToastMessage == null
+                ? const SizedBox.shrink()
+                : Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.75),
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                      child: Text(
+                        _zoomModeToastMessage!,
+                        style: const TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                    ),
+                  ),
+          ),
         ],
       ),
     );
@@ -1001,6 +1052,16 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 IconButton(
                   onPressed: _addBookmark,
                   icon: const Icon(Icons.bookmark_add, color: Colors.white),
+                ),
+
+                // Fullscreen (handled by Media3)
+                IconButton(
+                  onPressed: () {
+                      debugPrint('[_Media3PlayerWidgetState] Fullscreen button tapped.');
+                    _controller?.enterFullscreen();
+                    _resetControlsTimer();
+                  },
+                  icon: const Icon(Icons.fullscreen, color: Colors.white),
                 ),
 
                 // Zoom Cycle Button

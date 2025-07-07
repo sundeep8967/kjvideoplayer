@@ -1,7 +1,6 @@
 package com.sundeep.kjvideoplayer.player
 
 import android.content.Context
-import android.util.Log
 import android.view.View
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
@@ -23,10 +22,12 @@ import io.flutter.plugin.platform.PlatformViewFactory
  */
 @OptIn(UnstableApi::class)
 class Media3PlayerView(
-    private val context: Context,
-    private val messenger: BinaryMessenger,
-    private val id: Int,
-    private val creationParams: Map<String, Any>?
+    context: Context,
+    messenger: BinaryMessenger,
+    id: Int,
+    creationParams: Map<String, Any>?
+import android.util.Log
+
 ) : PlatformView {
     private val TAG = "Media3PlayerView" // For Logcat
 
