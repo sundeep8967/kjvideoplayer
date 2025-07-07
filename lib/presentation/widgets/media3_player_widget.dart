@@ -130,6 +130,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _controlsAnimationController.forward();
   }
   
+import 'package:flutter/foundation.dart'; // Import for debugPrint
 
   void _initializePlayer([int? viewId]) {
     debugPrint('[_Media3PlayerWidgetState] _initializePlayer called with viewId: $viewId');
@@ -617,12 +618,13 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
               ),
             
             // Custom video player controls
-            if (widget.showControls && _error == null)
-              AnimatedBuilder(
+            Visibility(
+              visible: _showControls && _error == null, // Only build/layout when visible
+              child: AnimatedBuilder(
                 animation: _controlsOpacity,
                 builder: (context, child) {
                   return Opacity(
-                    opacity: _controlsOpacity.value,
+                    opacity: _controlsOpacity.value, // Still use opacity for fade effect
                     child: Stack(
                       children: [
                         // Top controls (back button, title, settings)
@@ -646,6 +648,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                   );
                 },
               ),
+            ),
               
             // Settings panel
             if (_showSettings)
