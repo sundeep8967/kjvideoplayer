@@ -369,7 +369,8 @@ import android.util.Log
                 }
                 
                 "seekTo" -> {
-                    val position = call.argument<Long>("position") ?: 0L
+                    val positionArg = call.argument<Number>("position")
+                    val position = positionArg?.toLong() ?: 0L
                     exoPlayer.seekTo(position)
                     result.success(null)
                 }
