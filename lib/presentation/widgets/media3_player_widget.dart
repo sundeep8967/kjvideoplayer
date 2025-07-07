@@ -1006,6 +1006,21 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 },
                 offset: const Offset(0, 40), // Adjust offset as needed
               ),
+            // Music button
+            IconButton(
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Music feature coming soon!'),
+                    duration: Duration(seconds: 2),
+                    backgroundColor: Colors.blue,
+                  ),
+                );
+                _resetControlsTimer();
+              },
+              icon: const Icon(Icons.music_note, color: Colors.white, size: 24),
+              tooltip: 'Music',
+            ),
             // Settings button
             IconButton(
               onPressed: () {
