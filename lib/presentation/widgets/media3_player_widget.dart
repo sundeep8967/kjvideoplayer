@@ -416,7 +416,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   void _onScaleUpdate(ScaleUpdateDetails details) {
     if (!mounted) return;
     setState(() {
-      _scaleFactor = (_baseScaleFactor * details.scale).clamp(1.0, 3.0);
+      _scaleFactor = (_baseScaleFactor * details.scale).clamp(0.5, 3.0);
       
       if (_scaleFactor > 1.0) {
         // _isZoomed will be true if _scaleFactor > 1.0
@@ -437,20 +437,27 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
          _currentZoomMode = ZoomMode.custom;
          debugPrint('[_Media3PlayerWidgetState] Pinch zoom detected, mode set to Custom. Scale: $_scaleFactor');
       }
-       _isZoomed = _scaleFactor > 1.0 || _panOffset != Offset.zero; // Update _isZoomed based on actual state
+       _isZoomed = _scaleFactor != 1.0 || _panOffset != Offset.zero; // Update _isZoomed based on actual state
     });
   }
   
   void _onScaleEnd(ScaleEndDetails details) {
     if (!mounted) return;
-    if (_scaleFactor < 1.05 && (_panOffset.dx.abs() < 1 && _panOffset.dy.abs() < 1)) {
-      // If zoom is very close to 1.0 and no significant pan, reset to fit.
-      _resetZoom(); // This will also set mode to fit and call native resize.
-    } else {
-      _baseScaleFactor = _scaleFactor;
-       // Update _isZoomed based on actual state, though _onScaleUpdate should handle it
-      _isZoomed = _scaleFactor > 1.0 || _panOffset != Offset.zero;
-    }
+    setState(() {
+      if (_scaleFactor < 0.55 && (_panOffset.dx.abs() < 1 && _panOffset.dy.abs() < 1)) {
+        // If zoom is very close to 0.5 and no significant pan, reset to fit.
+        _resetZoom(); // This will also set mode to fit and call native resize.
+      } else {
+        // Save the current scale factor as the new base for future gestures
+        _baseScaleFactor = _scaleFactor;
+        // Update _isZoomed based on actual state
+        _isZoomed = _scaleFactor != 1.0 || _panOffset != Offset.zero;
+        // Set to custom zoom mode if user has zoomed
+        if (_scaleFactor != 1.0) {
+          _currentZoomMode = ZoomMode.custom;
+        }
+      }
+    });
   }
   
   void _resetZoom({bool switchToFit = true}) {
@@ -994,16 +1001,6 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 IconButton(
                   onPressed: _addBookmark,
                   icon: const Icon(Icons.bookmark_add, color: Colors.white),
-                ),
-                
-                // Fullscreen (handled by Media3)
-                IconButton(
-                  onPressed: () {
-                      debugPrint('[_Media3PlayerWidgetState] Fullscreen button tapped.');
-                    _controller?.enterFullscreen();
-                    _resetControlsTimer();
-                  },
-                  icon: const Icon(Icons.fullscreen, color: Colors.white),
                 ),
 
                 // Zoom Cycle Button
