@@ -384,6 +384,23 @@ class Media3PlayerController {
     }
   }
 
+  /// Get the currently selected audio track index
+  Future<int?> getSelectedAudioTrackIndex() async {
+    debugPrint('[Media3PlayerController] Invoking native getSelectedAudioTrackIndex()');
+    try {
+      // Ensure the player is initialized and tracks are available before calling
+      // For now, this is a placeholder. The native side needs to implement 'getSelectedAudioTrackIndex'.
+      // It should return the index of the currently selected audio track.
+      final int? index = await _channel.invokeMethod<int>('getSelectedAudioTrackIndex');
+      debugPrint('[Media3PlayerController] Native getSelectedAudioTrackIndex() returned: $index');
+      return index;
+    } catch (e) {
+      debugPrint('[Media3PlayerController] Error invoking native getSelectedAudioTrackIndex(): $e');
+      // Return null or a sensible default if the native call fails or is not implemented
+      return null;
+    }
+  }
+
   /// Get system volume using Media3
   Future<double> getSystemVolume() async {
     debugPrint('[Media3PlayerController] Getting system volume');

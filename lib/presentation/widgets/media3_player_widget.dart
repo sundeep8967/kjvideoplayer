@@ -91,6 +91,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   List<Map<String, dynamic>> _videoTracks = [];
   List<Map<String, dynamic>> _audioTracks = [];
   List<Map<String, dynamic>> _subtitleTracks = [];
+  int? _currentAudioTrackIndex; // To store the currently selected audio track index
   
   // Performance monitoring
   Map<String, dynamic> _performanceData = {};
@@ -115,6 +116,18 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _startControlsTimer();
   }
   
+  Future<void> _fetchAndUpdateCurrentAudioTrackIndex() async {
+    if (_controller != null && mounted) {
+      final currentIndex = await _controller!.getSelectedAudioTrackIndex();
+      if (mounted) {
+        setState(() {
+          _currentAudioTrackIndex = currentIndex;
+          debugPrint('[_Media3PlayerWidgetState] Fetched current audio track index: $_currentAudioTrackIndex');
+        });
+      }
+    }
+  }
+
   void _initializeAnimations() {
     _controlsAnimationController = AnimationController(
       duration: const Duration(milliseconds: 300),
@@ -155,6 +168,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       _setupEventListeners();
       _initializeSystemVolume();
       _listenToSystemVolumeChanges();
+      // Fetch current audio track after controller is initialized
+      _fetchAndUpdateCurrentAudioTrackIndex();
     } else {
       debugPrint('[_Media3PlayerWidgetState] viewId is null, controller not initialized.');
     }
@@ -281,6 +296,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         _audioTracks = List<Map<String, dynamic>>.from(data['audioTracks'] ?? []);
         _subtitleTracks = List<Map<String, dynamic>>.from(data['subtitleTracks'] ?? []);
       });
+      // When tracks change, re-fetch the current audio track index
+      _fetchAndUpdateCurrentAudioTrackIndex();
     });
     debugPrint('[_Media3PlayerWidgetState] _setupEventListeners: Listeners setup complete.');
   }
@@ -966,23 +983,23 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 tooltip: 'Select Audio Track',
                 onSelected: (int trackIndex) async {
                   await _controller?.setAudioTrack(trackIndex);
-                  setState(() {
-                    // Potentially update UI to show current track, if needed
-                  });
+                  // After setting the track, fetch and update the current index
+                  await _fetchAndUpdateCurrentAudioTrackIndex();
                   _resetControlsTimer();
                 },
                 itemBuilder: (BuildContext context) {
                   return _audioTracks.asMap().entries.map((entry) {
                     final int trackIndex = entry.key;
                     final Map<String, dynamic> trackInfo = entry.value;
-                    // TODO: Determine how to show which track is currently active.
-                    // This might require getting the current audio track index from the controller.
-                    // For now, just list them.
+                    final bool isSelected = _currentAudioTrackIndex == trackIndex;
                     return PopupMenuItem<int>(
                       value: trackIndex,
                       child: Text(
                         trackInfo['name'] ?? trackInfo['language'] ?? 'Track ${trackIndex + 1}',
-                        style: const TextStyle(color: Colors.black), // PopupMenu items are usually on a light background
+                        style: TextStyle(
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          color: isSelected ? Theme.of(context).primaryColor : Colors.black,
+                        ),
                       ),
                     );
                   }).toList();
@@ -1394,7 +1411,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                         ),
                         onTap: () async {
                           await _controller?.setAudioTrack(entry.key);
-                          setState(() {});
+                          // After setting the track, fetch and update the current index
+                          await _fetchAndUpdateCurrentAudioTrackIndex();
                         },
                       )),
                     ],
