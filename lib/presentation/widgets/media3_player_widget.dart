@@ -51,6 +51,9 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   Duration _duration = Duration.zero;
   String? _error;
   
+  // Temporary state for seekbar dragging
+  Duration? _draggingPosition;
+  
   // Enhanced UI State
   bool _showControls = true;
   bool _showSettings = false;
@@ -127,15 +130,18 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _controlsAnimationController.forward();
   }
   
-  void _initializePlayer() {
-    _controller = Media3PlayerController();
-    _setupEventListeners();
+  void _initializePlayer([int? viewId]) {
+    if (viewId != null) {
+      _controller = Media3PlayerController(viewId: viewId);
+      _setupEventListeners();
+    }
   }
   
   void _setupEventListeners() {
     if (_controller == null) return;
     
     _playingSubscription = _controller!.onPlayingChanged.listen((isPlaying) {
+      debugPrint('UI: onPlayingChanged received: isPlaying=$isPlaying');
       setState(() {
         _isPlaying = isPlaying;
       });
@@ -163,13 +169,12 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       }
     });
     
-    _positionSubscription = _controller!.onPositionChanged.listen((position) {
+    _positionSubscription = _controller!.onPositionChanged.listen((positionData) {
       setState(() {
-        _position = position;
-        _duration = _controller!.duration;
+        _position = positionData['position'] ?? Duration.zero;
+        _duration = positionData['duration'] ?? Duration.zero;
       });
-      
-      widget.onPositionChanged?.call(position);
+      widget.onPositionChanged?.call(_position);
     });
     
     _errorSubscription = _controller!.onError.listen((error) {
@@ -220,11 +225,14 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   }
   
   void _togglePlayPause() {
+    debugPrint('UI: Play/Pause button tapped. _isPlaying=$_isPlaying');
     if (_controller == null) return;
     
     if (_isPlaying) {
+      debugPrint('UI: Sending pause() to controller');
       _controller!.pause();
     } else {
+      debugPrint('UI: Sending play() to controller');
       _controller!.play();
     }
     _resetControlsTimer();
@@ -431,39 +439,48 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: GestureDetector(
-        onTap: _toggleControls,
-        onDoubleTap: _togglePlayPause,
-        child: Stack(
-          children: [
-            // Media3 Platform View with zoom and pan support
-            ClipRect(
-              child: Transform(
-                transform: Matrix4.identity()
-                  ..translate(_panOffset.dx, _panOffset.dy)
-                  ..scale(_scaleFactor),
-                alignment: Alignment.center,
-                child: GestureDetector(
-                  onScaleStart: _onScaleStart,
-                  onScaleUpdate: _onScaleUpdate,
-                  onScaleEnd: _onScaleEnd,
-                  child: Container(
-                    width: double.infinity,
-                    height: double.infinity,
-                    child: AndroidView(
-                      viewType: 'media3_player_view',
-                      creationParams: {
-                        'videoPath': widget.videoPath,
-                        'autoPlay': widget.autoPlay,
-                        'startPosition': widget.startPosition?.inMilliseconds,
-                        'useBuiltInControls': true, // Use Media3's built-in controls for now
-                      },
-                      creationParamsCodec: const StandardMessageCodec(),
-                    ),
+      body: Stack(
+        children: [
+          // Media3 Platform View with zoom and pan support
+          ClipRect(
+            child: Transform(
+              transform: Matrix4.identity()
+                ..translate(_panOffset.dx, _panOffset.dy)
+                ..scale(_scaleFactor),
+              alignment: Alignment.center,
+              child: GestureDetector(
+                onScaleStart: _onScaleStart,
+                onScaleUpdate: _onScaleUpdate,
+                onScaleEnd: _onScaleEnd,
+                child: SizedBox(
+                  width: double.infinity,
+                  height: double.infinity,
+                  child: AndroidView(
+                    viewType: 'media3_player_view',
+                    creationParams: {
+                      'videoPath': widget.videoPath,
+                      'autoPlay': widget.autoPlay,
+                      'startPosition': widget.startPosition?.inMilliseconds,
+                      'useBuiltInControls': false, // Hide Media3's built-in controls to use custom Flutter controls
+                    },
+                    creationParamsCodec: const StandardMessageCodec(),
+                    onPlatformViewCreated: (int id) {
+                      _initializePlayer(id);
+                    },
                   ),
                 ),
               ),
             ),
+          ),
+          // Invisible overlay for tap detection
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: _toggleControls,
+              onDoubleTap: _togglePlayPause,
+              behavior: HitTestBehavior.translucent,
+              child: const SizedBox.expand(),
+            ),
+          ),
             
             // Loading indicator
             if (!_isInitialized)
@@ -530,80 +547,50 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 ),
               ),
             
-            // Simple overlay with back button and settings
+            // Custom video player controls
             if (widget.showControls && _error == null)
-              _buildSimpleOverlay(),
+              AnimatedBuilder(
+                animation: _controlsOpacity,
+                builder: (context, child) {
+                  return Opacity(
+                    opacity: _controlsOpacity.value,
+                    child: Stack(
+                      children: [
+                        // Top controls (back button, title, settings)
+                        _buildTopControls(),
+                        
+                        // Center controls (play/pause, seek)
+                        _buildCenterControls(),
+                        
+                        // Bottom controls (progress bar, volume, speed, etc.)
+                        _buildBottomControls(),
+                        
+                        // Speed menu
+                        if (_showSpeedMenu)
+                          _buildSpeedMenu(),
+                          
+                        // Volume slider
+                        if (_showVolumeSlider)
+                          _buildVolumeSlider(),
+                      ],
+                    ),
+                  );
+                },
+              ),
               
             // Settings panel
             if (_showSettings)
               _buildSettingsPanel(),
               
-            // Zoom indicator
-            if (_isZoomed)
-              _buildZoomIndicator(),
-          ],
-        ),
+          // Zoom indicator
+          if (_isZoomed)
+            _buildZoomIndicator(),
+        ],
       ),
     );
   }
   
-  Widget _buildSimpleOverlay() {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      child: Container(
-        padding: EdgeInsets.only(
-          top: MediaQuery.of(context).padding.top,
-          left: 16,
-          right: 16,
-          bottom: 16,
-        ),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.black.withOpacity(0.7),
-              Colors.transparent,
-            ],
-          ),
-        ),
-        child: Row(
-          children: [
-            IconButton(
-              onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
-            ),
-            Expanded(
-              child: Text(
-                widget.videoTitle ?? 'Video',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            IconButton(
-              onPressed: () {
-                setState(() {
-                  _showSettings = !_showSettings;
-                });
-                if (_showSettings) {
-                  _settingsAnimationController.forward();
-                } else {
-                  _settingsAnimationController.reverse();
-                }
-              },
-              icon: const Icon(Icons.settings, color: Colors.white, size: 24),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+
   
   Widget _buildTopControls() {
     return Positioned(
@@ -757,54 +744,52 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             Row(
               children: [
                 Text(
-                  _formatDuration(_position),
+                  _formatDuration(_position, showPlaceholder: true),
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
                 Expanded(
-                  child: Stack(
-                    children: [
-                      // Buffer progress
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          trackHeight: 4,
-                          thumbShape: SliderComponentShape.noThumb,
-                          overlayShape: SliderComponentShape.noOverlay,
-                        ),
-                        child: Slider(
-                          value: _duration.inMilliseconds > 0
-                              ? (_bufferedPercentage / 100.0)
-                              : 0.0,
-                          onChanged: null,
-                          activeColor: Colors.white.withOpacity(0.3),
-                          inactiveColor: Colors.white.withOpacity(0.1),
-                        ),
-                      ),
-                      // Playback progress
-                      SliderTheme(
-                        data: SliderTheme.of(context).copyWith(
-                          trackHeight: 4,
-                          thumbColor: _isPlaying ? Colors.blue : Colors.red,
-                          activeTrackColor: _isPlaying ? Colors.blue : Colors.red,
-                          inactiveTrackColor: Colors.transparent,
-                        ),
-                        child: Slider(
-                          value: _duration.inMilliseconds > 0
-                              ? _position.inMilliseconds / _duration.inMilliseconds
-                              : 0.0,
-                          onChanged: (value) {
-                            final position = Duration(
-                              milliseconds: (value * _duration.inMilliseconds).round(),
-                            );
-                            _controller?.seekTo(position);
-                            _resetControlsTimer();
-                          },
-                        ),
-                      ),
-                    ],
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 4,
+                      thumbColor: _isPlaying ? Colors.blue : Colors.red,
+                      activeTrackColor: _isPlaying ? Colors.blue : Colors.red,
+                      inactiveTrackColor: Colors.white.withOpacity(0.1),
+                    ),
+                    child: Slider(
+                      value: (_duration.inMilliseconds > 0)
+                          ? ((_draggingPosition ?? _position).inMilliseconds.clamp(0, _duration.inMilliseconds) / _duration.inMilliseconds)
+                          : 0.0,
+                      min: 0.0,
+                      max: 1.0,
+                      onChanged: (_duration.inMilliseconds > 0)
+                          ? (value) {
+                              setState(() {
+                                _draggingPosition = Duration(
+                                  milliseconds: (value * _duration.inMilliseconds).round(),
+                                );
+                              });
+                              _resetControlsTimer();
+                            }
+                          : null,
+                      onChangeEnd: (_duration.inMilliseconds > 0)
+                          ? (value) {
+                              if (_draggingPosition != null) {
+                                // Clamp to duration
+                                final seekTo = _draggingPosition!.inMilliseconds.clamp(0, _duration.inMilliseconds);
+                                _controller?.seekTo(Duration(milliseconds: seekTo));
+                                setState(() {
+                                  _draggingPosition = null;
+                                  _position = Duration(milliseconds: seekTo); // Optimistic update
+                                });
+                              }
+                              _resetControlsTimer();
+                            }
+                          : null,
+                    ),
                   ),
                 ),
                 Text(
-                  _formatDuration(_duration),
+                  _formatDuration(_duration, showPlaceholder: true),
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
               ],
@@ -1240,11 +1225,19 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     );
   }
   
-  String _formatDuration(Duration duration) {
+  String _formatDuration(Duration duration, {bool showPlaceholder = false}) {
+    if (duration.inMilliseconds <= 0) {
+      return showPlaceholder ? '--:--' : '00:00';
+    }
+    int hours = duration.inHours;
+    int minutes = duration.inMinutes.remainder(60);
+    int seconds = duration.inSeconds.remainder(60);
     String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return '$minutes:$seconds';
+    if (hours > 0) {
+      return '${hours}:${twoDigits(minutes)}:${twoDigits(seconds)}';
+    } else {
+      return '${twoDigits(minutes)}:${twoDigits(seconds)}';
+    }
   }
   
   @override

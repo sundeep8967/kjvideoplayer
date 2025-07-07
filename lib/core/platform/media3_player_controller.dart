@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 
 /// Media3 Player Controller - Clean implementation without NextPlayer
 class Media3PlayerController {
-  static const MethodChannel _channel = MethodChannel('media3_player');
+  // ...existing code...
+  late final MethodChannel _channel;
+  final int viewId;
   
   // Player state
   bool _isInitialized = false;
@@ -16,7 +18,7 @@ class Media3PlayerController {
   // Stream controllers for reactive updates
   final StreamController<bool> _playingController = StreamController<bool>.broadcast();
   final StreamController<bool> _bufferingController = StreamController<bool>.broadcast();
-  final StreamController<Duration> _positionController = StreamController<Duration>.broadcast();
+  final StreamController<Map<String, Duration>> _positionController = StreamController<Map<String, Duration>>.broadcast();
   final StreamController<String?> _errorController = StreamController<String?>.broadcast();
   final StreamController<void> _initializedController = StreamController<void>.broadcast();
   final StreamController<Map<String, dynamic>> _performanceController = StreamController<Map<String, dynamic>>.broadcast();
@@ -33,21 +35,25 @@ class Media3PlayerController {
   // Streams for reactive programming
   Stream<bool> get onPlayingChanged => _playingController.stream;
   Stream<bool> get onBufferingChanged => _bufferingController.stream;
-  Stream<Duration> get onPositionChanged => _positionController.stream;
+  Stream<Map<String, Duration>> get onPositionChanged => _positionController.stream;
   Stream<String?> get onError => _errorController.stream;
   Stream<void> get onInitialized => _initializedController.stream;
   Stream<Map<String, dynamic>> get onPerformanceUpdate => _performanceController.stream;
   Stream<Map<String, dynamic>> get onTracksChanged => _tracksController.stream;
   
-  Media3PlayerController() {
+  Media3PlayerController({required this.viewId}) {
+    _channel = MethodChannel('media3_player_$viewId');
     _setupMethodCallHandler();
-  }
+}
   
   void _setupMethodCallHandler() {
     _channel.setMethodCallHandler((call) async {
       switch (call.method) {
         case 'onPlaybackStateChanged':
           _handlePlaybackStateChanged(call.arguments);
+          break;
+        case 'onPlayingChanged': // Changed from 'onIsPlayingChanged'
+          _handleIsPlayingChanged(call.arguments);
           break;
         case 'onPositionChanged':
           _handlePositionChanged(call.arguments);
@@ -78,6 +84,11 @@ class Media3PlayerController {
           break;
       }
     });
+  }
+
+  void _handleIsPlayingChanged(dynamic isPlaying) {
+    _isPlaying = isPlaying == true;
+    _playingController.add(_isPlaying);
   }
   
   /// Play the video
@@ -230,11 +241,14 @@ class Media3PlayerController {
   void _handlePositionChanged(Map<String, dynamic> args) {
     final position = args['position'] as int? ?? 0;
     final duration = args['duration'] as int? ?? 0;
-    
+
     _position = Duration(milliseconds: position);
     _duration = Duration(milliseconds: duration);
-    
-    _positionController.add(_position);
+
+    _positionController.add({
+      'position': _position,
+      'duration': _duration,
+    });
   }
   
   void _handleError(Map<String, dynamic> args) {
@@ -354,7 +368,6 @@ class Media3PlayerController {
     _initializedController.close();
     _performanceController.close();
     _tracksController.close();
-    
     // Dispose the native player
     _channel.invokeMethod('dispose').catchError((e) {
       print('Error disposing Media3Player: $e');

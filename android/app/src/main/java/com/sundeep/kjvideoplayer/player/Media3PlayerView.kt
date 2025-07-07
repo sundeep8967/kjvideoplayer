@@ -27,6 +27,15 @@ class Media3PlayerView(
     creationParams: Map<String, Any>?
 ) : PlatformView {
     
+    // Handler for periodic position updates
+    private val positionUpdateHandler = android.os.Handler()
+    private val positionUpdateRunnable = object : Runnable {
+        override fun run() {
+            sendPositionUpdate()
+            positionUpdateHandler.postDelayed(this, 250)
+        }
+    }
+    
     private val frameLayout: FrameLayout = FrameLayout(context)
     private val playerView: PlayerView = PlayerView(context)
     private val channel: MethodChannel = MethodChannel(messenger, "media3_player_$id")
@@ -59,6 +68,9 @@ class Media3PlayerView(
         if (videoPath != null) {
             loadVideo(videoPath, autoPlay, startPosition)
         }
+
+        // Start periodic position updates
+        positionUpdateHandler.post(positionUpdateRunnable)
     }
     
     private fun createMedia3Player(context: Context): ExoPlayer {
@@ -153,50 +165,38 @@ class Media3PlayerView(
         trackSelector.setParameters(parameters)
     }
     
+    private fun sendPositionUpdate() {
+        try {
+            channel.invokeMethod("onPositionChanged", mapOf(
+                "position" to exoPlayer.currentPosition,
+                "duration" to if (exoPlayer.duration != C.TIME_UNSET) exoPlayer.duration else 0L
+            ))
+        } catch (e: Exception) {
+            // Ignore errors during position updates
+        }
+    }
+    
+    private fun startPositionUpdates() {
+        positionUpdateHandler.post(positionUpdateRunnable)
+    }
+    
+    private fun stopPositionUpdates() {
+        positionUpdateHandler.removeCallbacks(positionUpdateRunnable)
+    }
+    
     private fun setupPlayerView() {
         playerView.apply {
             player = exoPlayer
-            useController = true // Enable Media3's excellent built-in controls
-            setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+            useController = false // Completely disable all native UI controls
+            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER) // Hide buffering indicator
             
-            // Configure Media3's advanced control features
-            controllerAutoShow = true
-            controllerHideOnTouch = true
-            controllerShowTimeoutMs = 3000
+            // Disable all controller features
+            controllerAutoShow = false
+            controllerHideOnTouch = false
             
-            // Customize progress bar colors after layout
-            viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
-                override fun onGlobalLayout() {
-                    viewTreeObserver.removeOnGlobalLayoutListener(this)
-                    try {
-                        // Find the progress bar and set blue color
-                        val progressBar = findViewById<androidx.media3.ui.DefaultTimeBar>(androidx.media3.ui.R.id.exo_progress)
-                        progressBar?.let { timeBar ->
-                            timeBar.setPlayedColor(android.graphics.Color.BLUE)
-                            timeBar.setScrubberColor(android.graphics.Color.BLUE)
-                            android.util.Log.d("Media3Player", "Successfully set progress bar to blue")
-                        } ?: run {
-                            android.util.Log.d("Media3Player", "Progress bar not found")
-                        }
-                    } catch (e: Exception) {
-                        android.util.Log.e("Media3Player", "Error customizing progress bar: ${e.message}")
-                    }
-                }
-            })
-            
-            // Enable Media3's gesture controls
-            setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
-                channel.invokeMethod("onControlsVisibilityChanged", mapOf(
-                    "visible" to (visibility == View.VISIBLE)
-                ))
-            })
-            
-            // Enable Media3's fullscreen support
-            setFullscreenButtonClickListener { isFullScreen ->
-                channel.invokeMethod("onFullscreenToggle", mapOf(
-                    "isFullscreen" to isFullScreen
-                ))
-            }
+            // Remove all listeners that might show UI elements
+            setControllerVisibilityListener(null as PlayerView.ControllerVisibilityListener?)
+            setFullscreenButtonClickListener(null)
         }
         
         frameLayout.addView(playerView)
@@ -204,6 +204,9 @@ class Media3PlayerView(
     
     private fun setupPlayerListener() {
         exoPlayer.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                channel.invokeMethod("onPlayingChanged", isPlaying)
+            }
             override fun onPlaybackStateChanged(playbackState: Int) {
                 val stateString = when (playbackState) {
                     Player.STATE_IDLE -> "IDLE"
@@ -246,11 +249,15 @@ class Media3PlayerView(
                 newPosition: Player.PositionInfo,
                 reason: Int
             ) {
-                channel.invokeMethod("onPositionChanged", mapOf(
-                    "position" to exoPlayer.currentPosition,
-                    "duration" to exoPlayer.duration
-                ))
+                sendPositionUpdate()
             }
+    // Send current position and duration to Flutter
+    private fun sendPositionUpdate() {
+        channel.invokeMethod("onPositionChanged", mapOf(
+            "position" to exoPlayer.currentPosition,
+            "duration" to exoPlayer.duration
+        ))
+    }
             
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 channel.invokeMethod("onVideoSizeChanged", mapOf(
@@ -443,11 +450,12 @@ class Media3PlayerView(
     
     // Lifecycle management
     fun onStart() {
-        if (android.os.Build.VERSION.SDK_INT > 23) {
-            if (!isInitialized) {
-                // Player is already initialized in init
-            }
-        }
+        startPositionUpdates()
+    }
+    
+    fun onStop() {
+        stopPositionUpdates()
+        savePlayerState()
     }
     
     fun onResume() {
@@ -460,12 +468,6 @@ class Media3PlayerView(
     
     fun onPause() {
         if (android.os.Build.VERSION.SDK_INT <= 23) {
-            savePlayerState()
-        }
-    }
-    
-    fun onStop() {
-        if (android.os.Build.VERSION.SDK_INT > 23) {
             savePlayerState()
         }
     }
