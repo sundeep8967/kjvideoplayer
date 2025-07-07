@@ -947,17 +947,21 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 ],
               ),
             ),
-            // Zoom reset button (only show when zoomed)
-            if (_isZoomed)
-              IconButton(
-                onPressed: _resetZoom,
-                icon: const Icon(Icons.zoom_out_map, color: Colors.white, size: 24),
-                tooltip: 'Reset Zoom',
-              ),
-            // IconButton for cycling zoom modes could go here or in bottom controls
+            // Subtitle control
             IconButton(
               onPressed: () {
-                // This is the settings button
+                setState(() {
+                  _showSettings = true;
+                });
+                _settingsAnimationController.forward();
+                _resetControlsTimer();
+              },
+              icon: const Icon(Icons.subtitles, color: Colors.white, size: 24),
+              tooltip: 'Subtitles',
+            ),
+            // Settings button
+            IconButton(
+              onPressed: () {
                 setState(() {
                   _showSettings = !_showSettings;
                 });
@@ -969,6 +973,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 _resetControlsTimer();
               },
               icon: const Icon(Icons.settings, color: Colors.white, size: 24),
+              tooltip: 'Settings',
             ),
           ],
         ),
@@ -1126,17 +1131,6 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                   ),
                 ),
                 
-                // Subtitle control
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      _showSettings = true;
-                    });
-                    _settingsAnimationController.forward();
-                    _resetControlsTimer();
-                  },
-                  icon: const Icon(Icons.subtitles, color: Colors.white),
-                ),
                 
                 // Volume control
                 IconButton(
@@ -1166,6 +1160,14 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                   ),
                   tooltip: 'Cycle Zoom Mode (${_currentZoomMode.toString().split('.').last})',
                 ),
+                
+                // Zoom reset button (only show when zoomed)
+                if (_isZoomed)
+                  IconButton(
+                    onPressed: _resetZoom,
+                    icon: const Icon(Icons.zoom_out_map, color: Colors.white),
+                    tooltip: 'Reset Zoom',
+                  ),
               ],
             ),
           ],
