@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 
 /// Media3 Player Controller - Clean implementation without NextPlayer
 class Media3PlayerController {
@@ -23,6 +24,7 @@ class Media3PlayerController {
   final StreamController<void> _initializedController = StreamController<void>.broadcast();
   final StreamController<Map<String, dynamic>> _performanceController = StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _tracksController = StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>> _videoSizeController = StreamController<Map<String, dynamic>>.broadcast();
   
   // Getters
   bool get isInitialized => _isInitialized;
@@ -40,13 +42,13 @@ class Media3PlayerController {
   Stream<void> get onInitialized => _initializedController.stream;
   Stream<Map<String, dynamic>> get onPerformanceUpdate => _performanceController.stream;
   Stream<Map<String, dynamic>> get onTracksChanged => _tracksController.stream;
+  Stream<Map<String, dynamic>> get onVideoSizeChanged => _videoSizeController.stream;
   
   Media3PlayerController({required this.viewId}) {
     _channel = MethodChannel('media3_player_$viewId');
     _setupMethodCallHandler();
 }
   
-import 'package:flutter/foundation.dart'; // Import for debugPrint
 
   void _setupMethodCallHandler() {
     _channel.setMethodCallHandler((call) async {
