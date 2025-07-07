@@ -130,63 +130,85 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _controlsAnimationController.forward();
   }
   
+import 'package:flutter/foundation.dart'; // Import for debugPrint
+
   void _initializePlayer([int? viewId]) {
+    debugPrint('[_Media3PlayerWidgetState] _initializePlayer called with viewId: $viewId');
     if (viewId != null) {
       _controller = Media3PlayerController(viewId: viewId);
+      debugPrint('[_Media3PlayerWidgetState] Media3PlayerController initialized.');
       _setupEventListeners();
+    } else {
+      debugPrint('[_Media3PlayerWidgetState] viewId is null, controller not initialized.');
     }
   }
   
   void _setupEventListeners() {
-    if (_controller == null) return;
+    if (_controller == null) {
+      debugPrint('[_Media3PlayerWidgetState] _setupEventListeners: Controller is null, cannot setup listeners.');
+      return;
+    }
+    debugPrint('[_Media3PlayerWidgetState] _setupEventListeners: Setting up listeners...');
     
     _playingSubscription = _controller!.onPlayingChanged.listen((isPlaying) {
-      debugPrint('UI: onPlayingChanged received: isPlaying=$isPlaying');
+      debugPrint('[_Media3PlayerWidgetState] Event: onPlayingChanged received: isPlaying=$isPlaying. Current state: _isPlaying=$_isPlaying');
+      if (!mounted) return;
       setState(() {
         _isPlaying = isPlaying;
+        debugPrint('[_Media3PlayerWidgetState] setState: _isPlaying set to $isPlaying');
       });
     });
     
     _bufferingSubscription = _controller!.onBufferingChanged.listen((isBuffering) {
-      setState(() {
-        _isBuffering = isBuffering;
-      });
-      
-      // Only show buffering indicator after a delay to avoid flickering
+      debugPrint('[_Media3PlayerWidgetState] Event: onBufferingChanged received: isBuffering=$isBuffering. Current state: _isBuffering=$_isBuffering');
+      if (!mounted) return;
+      // UI logic for _showBufferingIndicator handles setState internally after a delay
+      _isBuffering = isBuffering; // Update internal state immediately
+
       _bufferingTimer?.cancel();
       if (isBuffering) {
         _bufferingTimer = Timer(const Duration(milliseconds: 500), () {
-          if (mounted && _isBuffering) {
+          if (mounted && _isBuffering) { // Check _isBuffering again in case it changed quickly
             setState(() {
               _showBufferingIndicator = true;
+              debugPrint('[_Media3PlayerWidgetState] setState: _showBufferingIndicator set to true');
             });
           }
         });
       } else {
-        setState(() {
-          _showBufferingIndicator = false;
-        });
+        // If it was buffering and now it's not, ensure indicator is hidden
+        if (_showBufferingIndicator) {
+           setState(() {
+            _showBufferingIndicator = false;
+            debugPrint('[_Media3PlayerWidgetState] setState: _showBufferingIndicator set to false');
+          });
+        }
       }
     });
     
     _positionSubscription = _controller!.onPositionChanged.listen((positionData) {
+      final newPosition = positionData['position'] ?? Duration.zero;
+      final newDuration = positionData['duration'] ?? Duration.zero;
+      debugPrint('[_Media3PlayerWidgetState] Event: onPositionChanged received: position=${newPosition.inSeconds}s, duration=${newDuration.inSeconds}s. Current state: _position=${_position.inSeconds}s, _duration=${_duration.inSeconds}s');
+      if (!mounted) return;
       setState(() {
-        _position = positionData['position'] ?? Duration.zero;
-        _duration = positionData['duration'] ?? Duration.zero;
+        _position = newPosition;
+        _duration = newDuration;
+        debugPrint('[_Media3PlayerWidgetState] setState: _position set to ${_position.inSeconds}s, _duration set to ${_duration.inSeconds}s');
       });
       widget.onPositionChanged?.call(_position);
     });
     
     _errorSubscription = _controller!.onError.listen((error) {
+      debugPrint('[_Media3PlayerWidgetState] Event: onError received: $error');
+      if (!mounted) return;
       setState(() {
         _error = error;
       });
       
-      // Only show error dialog for critical errors, not temporary ones
       if (error != null && _shouldShowErrorDialog(error)) {
         _showErrorDialog(error);
       } else if (error != null) {
-        // Auto-clear temporary errors after 3 seconds
         _errorClearTimer?.cancel();
         _errorClearTimer = Timer(const Duration(seconds: 3), () {
           if (mounted) {
@@ -199,16 +221,20 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     });
     
     _initializedSubscription = _controller!.onInitialized.listen((_) {
+      debugPrint('[_Media3PlayerWidgetState] Event: onInitialized received. Current state: _isInitialized=$_isInitialized');
+      if (!mounted) return;
       setState(() {
         _isInitialized = true;
+        debugPrint('[_Media3PlayerWidgetState] setState: _isInitialized set to true');
       });
     });
     
     _performanceSubscription = _controller!.onPerformanceUpdate.listen((data) {
+      // This is mostly for debug or advanced metrics, less critical for core controls.
+      // debugPrint('[_Media3PlayerWidgetState] Event: onPerformanceUpdate received: $data');
+      if (!mounted) return;
       setState(() {
         _performanceData = data;
-        
-        // Update buffered percentage if available
         if (data['bufferedPercentage'] != null) {
           _bufferedPercentage = data['bufferedPercentage'];
         }
@@ -216,25 +242,33 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     });
     
     _tracksSubscription = _controller!.onTracksChanged.listen((data) {
+      debugPrint('[_Media3PlayerWidgetState] Event: onTracksChanged received: video=${(data['videoTracks'] as List).length}, audio=${(data['audioTracks'] as List).length}, subtitle=${(data['subtitleTracks'] as List).length}');
+      if (!mounted) return;
       setState(() {
         _videoTracks = List<Map<String, dynamic>>.from(data['videoTracks'] ?? []);
         _audioTracks = List<Map<String, dynamic>>.from(data['audioTracks'] ?? []);
         _subtitleTracks = List<Map<String, dynamic>>.from(data['subtitleTracks'] ?? []);
       });
     });
+    debugPrint('[_Media3PlayerWidgetState] _setupEventListeners: Listeners setup complete.');
   }
   
   void _togglePlayPause() {
-    debugPrint('UI: Play/Pause button tapped. _isPlaying=$_isPlaying');
-    if (_controller == null) return;
+    debugPrint('[_Media3PlayerWidgetState] _togglePlayPause called. Current _isPlaying state: $_isPlaying');
+    if (_controller == null) {
+      debugPrint('[_Media3PlayerWidgetState] _togglePlayPause: Controller is null. Cannot proceed.');
+      return;
+    }
     
     if (_isPlaying) {
-      debugPrint('UI: Sending pause() to controller');
+      debugPrint('[_Media3PlayerWidgetState] _togglePlayPause: Calling controller.pause()');
       _controller!.pause();
     } else {
-      debugPrint('UI: Sending play() to controller');
+      debugPrint('[_Media3PlayerWidgetState] _togglePlayPause: Calling controller.play()');
       _controller!.play();
     }
+    // Note: The actual _isPlaying state will be updated by the onPlayingChanged event from the controller.
+    // We don't optimistically set it here to ensure UI reflects the true player state.
     _resetControlsTimer();
   }
   
@@ -282,7 +316,14 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   }
   
   void _changePlaybackSpeed(double speed) {
-    _controller?.setPlaybackSpeed(speed);
+    debugPrint('[_Media3PlayerWidgetState] _changePlaybackSpeed called with speed: $speed');
+    if (_controller == null) {
+      debugPrint('[_Media3PlayerWidgetState] _changePlaybackSpeed: Controller is null.');
+      return;
+    }
+    _controller!.setPlaybackSpeed(speed);
+    // Optimistically update UI, or wait for confirmation if player provides it
+    if (!mounted) return;
     setState(() {
       _currentSpeed = speed;
       _showSpeedMenu = false;
@@ -291,26 +332,54 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   }
   
   void _changeVolume(double volume) {
-    _controller?.setVolume(volume);
+    debugPrint('[_Media3PlayerWidgetState] _changeVolume called with volume: $volume');
+     if (_controller == null) {
+      debugPrint('[_Media3PlayerWidgetState] _changeVolume: Controller is null.');
+      return;
+    }
+    _controller!.setVolume(volume);
+    // Optimistically update UI
+    if (!mounted) return;
     setState(() {
       _currentVolume = volume;
     });
+    // No need to reset controls timer for volume usually, unless it makes sense for your UI
   }
   
   void _seekForward() {
+    debugPrint('[_Media3PlayerWidgetState] _seekForward called. Current position: $_position, duration: $_duration');
+    if (_controller == null || _duration == Duration.zero) {
+      debugPrint('[_Media3PlayerWidgetState] _seekForward: Controller is null or duration is zero.');
+      return;
+    }
     final newPosition = _position + const Duration(seconds: 10);
-    final maxPosition = _duration;
-    _controller?.seekTo(newPosition > maxPosition ? maxPosition : newPosition);
+    final targetPosition = newPosition > _duration ? _duration : newPosition;
+    debugPrint('[_Media3PlayerWidgetState] _seekForward: Seeking to $targetPosition');
+    _controller!.seekTo(targetPosition);
+    // Optimistically update position for smoother UI, actual update comes from onPositionChanged
+    if (!mounted) return;
+    // setState(() { _position = targetPosition; }); // Optional: for immediate UI feedback
     _resetControlsTimer();
   }
   
   void _seekBackward() {
+    debugPrint('[_Media3PlayerWidgetState] _seekBackward called. Current position: $_position');
+    if (_controller == null) {
+      debugPrint('[_Media3PlayerWidgetState] _seekBackward: Controller is null.');
+      return;
+    }
     final newPosition = _position - const Duration(seconds: 10);
-    _controller?.seekTo(newPosition < Duration.zero ? Duration.zero : newPosition);
+    final targetPosition = newPosition < Duration.zero ? Duration.zero : newPosition;
+    debugPrint('[_Media3PlayerWidgetState] _seekBackward: Seeking to $targetPosition');
+    _controller!.seekTo(targetPosition);
+    // Optimistically update position for smoother UI
+    if (!mounted) return;
+    // setState(() { _position = targetPosition; }); // Optional: for immediate UI feedback
     _resetControlsTimer();
   }
   
   void _addBookmark() {
+    debugPrint('[_Media3PlayerWidgetState] _addBookmark called at position: $_position');
     widget.onBookmarkAdded?.call(_position);
     _resetControlsTimer();
   }
@@ -465,6 +534,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                     },
                     creationParamsCodec: const StandardMessageCodec(),
                     onPlatformViewCreated: (int id) {
+                      debugPrint('[_Media3PlayerWidgetState] onPlatformViewCreated called with id: $id');
                       _initializePlayer(id);
                     },
                   ),
@@ -757,31 +827,36 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                     ),
                     child: Slider(
                       value: (_duration.inMilliseconds > 0)
-                          ? ((_draggingPosition ?? _position).inMilliseconds.clamp(0, _duration.inMilliseconds) / _duration.inMilliseconds)
+                          ? ((_draggingPosition ?? _position).inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0)
                           : 0.0,
                       min: 0.0,
                       max: 1.0,
                       onChanged: (_duration.inMilliseconds > 0)
                           ? (value) {
+                              if (!mounted) return;
+                              final newDraggingPosition = Duration(milliseconds: (value * _duration.inMilliseconds).round());
+                              debugPrint('[_Media3PlayerWidgetState] Slider onChanged: value=$value, newDraggingPosition=${newDraggingPosition.inSeconds}s');
                               setState(() {
-                                _draggingPosition = Duration(
-                                  milliseconds: (value * _duration.inMilliseconds).round(),
-                                );
+                                _draggingPosition = newDraggingPosition;
                               });
                               _resetControlsTimer();
                             }
                           : null,
                       onChangeEnd: (_duration.inMilliseconds > 0)
                           ? (value) {
+                              if (!mounted) return;
                               if (_draggingPosition != null) {
-                                // Clamp to duration
                                 final seekTo = _draggingPosition!.inMilliseconds.clamp(0, _duration.inMilliseconds);
+                                debugPrint('[_Media3PlayerWidgetState] Slider onChangeEnd: seeking to ${Duration(milliseconds: seekTo).inSeconds}s');
                                 _controller?.seekTo(Duration(milliseconds: seekTo));
-                                setState(() {
-                                  _draggingPosition = null;
-                                  _position = Duration(milliseconds: seekTo); // Optimistic update
-                                });
+                                // UI will update via onPositionChanged stream, but can optimistically update if needed
+                                // setState(() {
+                                //   _position = Duration(milliseconds: seekTo);
+                                // });
                               }
+                              setState(() { // Clear dragging position whether it was null or not
+                                  _draggingPosition = null;
+                              });
                               _resetControlsTimer();
                             }
                           : null,
@@ -789,7 +864,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                   ),
                 ),
                 Text(
-                  _formatDuration(_duration, showPlaceholder: true),
+                  _formatDuration(_duration, showPlaceholder: true), // Duration should update via onPositionChanged
                   style: const TextStyle(color: Colors.white, fontSize: 12),
                 ),
               ],
@@ -853,6 +928,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 // Fullscreen (handled by Media3)
                 IconButton(
                   onPressed: () {
+                      debugPrint('[_Media3PlayerWidgetState] Fullscreen button tapped.');
                     _controller?.enterFullscreen();
                     _resetControlsTimer();
                   },
