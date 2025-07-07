@@ -1,7 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import '../../core/platform/media3_player_controller.dart';
+
+// Enum for Zoom Modes
+enum ZoomMode { fit, stretch, zoomToFill, custom }
 
 /// Media3 Player Widget - Enhanced implementation with comprehensive controls
 class Media3PlayerWidget extends StatefulWidget {
@@ -136,10 +140,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _controlsAnimationController.forward();
   }
   
-import 'package:flutter/foundation.dart'; // Import for debugPrint
 
 // Enum for Zoom Modes
-enum ZoomMode { fit, stretch, zoomToFill, custom }
 
   void _initializePlayer([int? viewId]) {
     debugPrint('[_Media3PlayerWidgetState] _initializePlayer called with viewId: $viewId');
@@ -419,17 +421,19 @@ enum ZoomMode { fit, stretch, zoomToFill, custom }
     setState(() {
       _scaleFactor = (_baseScaleFactor * details.scale).clamp(0.5, 3.0); // Allow zoom out to 50%
       
-      if (_scaleFactor > 1.0 || _scaleFactor < 1.0) { // Pan only if zoomed in or out
+      if (_scaleFactor != 1.0) { // Pan only if zoomed in or out
         final screenSize = MediaQuery.of(context).size;
-        final maxPanX = (screenSize.width * (_scaleFactor - 1)) / 2;
-        final maxPanY = (screenSize.height * (_scaleFactor - 1)) / 2;
+        // Use absolute value to handle both zoom in and zoom out correctly
+        final scaleDifference = (_scaleFactor - 1.0).abs();
+        final maxPanX = (screenSize.width * scaleDifference) / 2;
+        final maxPanY = (screenSize.height * scaleDifference) / 2;
         
         _panOffset = Offset(
           (_panOffset.dx + details.focalPointDelta.dx).clamp(-maxPanX, maxPanX),
           (_panOffset.dy + details.focalPointDelta.dy).clamp(-maxPanY, maxPanY),
         );
       } else {
-        // _isZoomed will be false if _scaleFactor is 1.0
+        // Reset pan when at 1.0 scale
         _panOffset = Offset.zero;
       }
       // If scale or pan happens, it's custom zoom
@@ -549,7 +553,7 @@ enum ZoomMode { fit, stretch, zoomToFill, custom }
       _isZoomed = false;
     });
     _controller?.setResizeMode(nativeModeString);
-    _showZoomToast(toastMessage); // Show toast after mode is set
+    _showZoomToast(nativeModeString); // Show toast after mode is set
 
     debugPrint('[_Media3PlayerWidgetState] Zoom mode cycled to: $_currentZoomMode, native mode: $nativeModeString');
     _resetControlsTimer();
