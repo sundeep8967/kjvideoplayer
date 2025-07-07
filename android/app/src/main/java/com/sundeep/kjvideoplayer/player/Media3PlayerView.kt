@@ -1,6 +1,7 @@
 package com.sundeep.kjvideoplayer.player
 
 import android.content.Context
+import android.util.Log
 import android.view.View
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
@@ -21,14 +22,15 @@ import io.flutter.plugin.platform.PlatformViewFactory
  */
 @OptIn(UnstableApi::class)
 class Media3PlayerView(
-    context: Context,
-    messenger: BinaryMessenger,
-    id: Int,
-    creationParams: Map<String, Any>?
+    private val context: Context,
+    private val messenger: BinaryMessenger,
+    private val id: Int,
+    private val creationParams: Map<String, Any>?
 ) : PlatformView {
-    
+    private val TAG = "Media3PlayerView" // For Logcat
+
     // Handler for periodic position updates
-    private val positionUpdateHandler = android.os.Handler()
+    private val positionUpdateHandler = android.os.Handler(context.mainLooper)
     private val positionUpdateRunnable = object : Runnable {
         override fun run() {
             sendPositionUpdate()
@@ -166,13 +168,20 @@ class Media3PlayerView(
     }
     
     private fun sendPositionUpdate() {
+        if (!exoPlayer.isCommandAvailable(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)) {
+            // Player might not be ready, or is released
+            return
+        }
+        val currentPos = exoPlayer.currentPosition
+        val currentDur = if (exoPlayer.duration != C.TIME_UNSET) exoPlayer.duration else 0L
+        // Log.d(TAG, "Sending onPositionChanged: position=$currentPos, duration=$currentDur") // Can be too noisy
         try {
             channel.invokeMethod("onPositionChanged", mapOf(
-                "position" to exoPlayer.currentPosition,
-                "duration" to if (exoPlayer.duration != C.TIME_UNSET) exoPlayer.duration else 0L
+                "position" to currentPos,
+                "duration" to currentDur
             ))
         } catch (e: Exception) {
-            // Ignore errors during position updates
+            Log.e(TAG, "Error sending onPositionChanged: ${e.message}")
         }
     }
     
@@ -189,22 +198,34 @@ class Media3PlayerView(
             player = exoPlayer
             useController = false // Completely disable all native UI controls
             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER) // Hide buffering indicator
-            
+
             // Disable all controller features
             controllerAutoShow = false
             controllerHideOnTouch = false
-            
+
             // Remove all listeners that might show UI elements
             setControllerVisibilityListener(null as PlayerView.ControllerVisibilityListener?)
             setFullscreenButtonClickListener(null)
+
+            // Make PlayerView non-interactive to touch to pass events to Flutter
+            isFocusable = false
+            isClickable = false
+            isLongClickable = false
         }
-        
-        frameLayout.addView(playerView)
+
+        frameLayout.apply {
+            // Make FrameLayout non-interactive to touch
+            isFocusable = false
+            isClickable = false
+            isLongClickable = false
+            addView(playerView)
+        }
     }
     
     private fun setupPlayerListener() {
         exoPlayer.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                Log.d(TAG, "Sending onPlayingChanged: $isPlaying")
                 channel.invokeMethod("onPlayingChanged", isPlaying)
             }
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -215,23 +236,25 @@ class Media3PlayerView(
                     Player.STATE_ENDED -> "ENDED"
                     else -> "UNKNOWN"
                 }
-                
-                channel.invokeMethod("onPlaybackStateChanged", mapOf(
+                val payload = mapOf(
                     "state" to stateString,
                     "isPlaying" to exoPlayer.isPlaying,
                     "isBuffering" to (playbackState == Player.STATE_BUFFERING),
                     "bufferedPercentage" to exoPlayer.bufferedPercentage,
                     "bufferedPosition" to exoPlayer.bufferedPosition
-                ))
+                )
+                Log.d(TAG, "Sending onPlaybackStateChanged: $payload")
+                channel.invokeMethod("onPlaybackStateChanged", payload)
                 
                 if (playbackState == Player.STATE_READY && !isInitialized) {
                     isInitialized = true
+                    Log.d(TAG, "Sending onInitialized")
                     channel.invokeMethod("onInitialized", null)
                 }
             }
             
             override fun onPlayerError(error: PlaybackException) {
-                channel.invokeMethod("onError", mapOf(
+                val errorPayload = mapOf(
                     "error" to error.message,
                     "errorCode" to error.errorCode,
                     "errorType" to when (error.errorCode) {
@@ -241,7 +264,9 @@ class Media3PlayerView(
                         PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED -> "AUDIO_ERROR"
                         else -> "UNKNOWN_ERROR"
                     }
-                ))
+                )
+                Log.e(TAG, "Sending onError: ${error.message}", error)
+                channel.invokeMethod("onError", errorPayload)
             }
             
             override fun onPositionDiscontinuity(
@@ -249,35 +274,36 @@ class Media3PlayerView(
                 newPosition: Player.PositionInfo,
                 reason: Int
             ) {
-                sendPositionUpdate()
+                Log.d(TAG, "onPositionDiscontinuity, reason: $reason. New pos: ${newPosition.positionMs}. Old pos: ${oldPosition.positionMs}")
+                sendPositionUpdate() // Ensure UI updates on seek or playlist transition
             }
-    // Send current position and duration to Flutter
-    private fun sendPositionUpdate() {
-        channel.invokeMethod("onPositionChanged", mapOf(
-            "position" to exoPlayer.currentPosition,
-            "duration" to exoPlayer.duration
-        ))
-    }
             
+            // The duplicate sendPositionUpdate was removed. The one outside the listener is used by the Handler.
+
             override fun onVideoSizeChanged(videoSize: VideoSize) {
-                channel.invokeMethod("onVideoSizeChanged", mapOf(
+                val payload = mapOf(
                     "width" to videoSize.width,
                     "height" to videoSize.height,
                     "pixelWidthHeightRatio" to videoSize.pixelWidthHeightRatio
-                ))
+                )
+                Log.d(TAG, "Sending onVideoSizeChanged: $payload")
+                channel.invokeMethod("onVideoSizeChanged", payload)
             }
             
             override fun onRenderedFirstFrame() {
-                channel.invokeMethod("onFirstFrameRendered", null)
+                Log.d(TAG, "Sending onRenderedFirstFrame")
+                channel.invokeMethod("onRenderedFirstFrame", null)
             }
             
             override fun onLoadingChanged(isLoading: Boolean) {
+                 Log.d(TAG, "Sending onLoadingChanged: $isLoading")
                 channel.invokeMethod("onLoadingChanged", mapOf(
                     "isLoading" to isLoading
                 ))
             }
             
             override fun onTracksChanged(tracks: Tracks) {
+                Log.d(TAG, "Tracks changed. Processing and sending onTracksChanged.")
                 val videoTracks = mutableListOf<Map<String, Any>>()
                 val audioTracks = mutableListOf<Map<String, Any>>()
                 val subtitleTracks = mutableListOf<Map<String, Any>>()
@@ -316,17 +342,20 @@ class Media3PlayerView(
                     }
                 }
                 
-                channel.invokeMethod("onTracksChanged", mapOf(
+                val payload = mapOf(
                     "videoTracks" to videoTracks,
                     "audioTracks" to audioTracks,
                     "subtitleTracks" to subtitleTracks
-                ))
+                )
+                Log.d(TAG, "Sending onTracksChanged with data: $payload")
+                channel.invokeMethod("onTracksChanged", payload)
             }
         })
     }
     
     private fun setupMethodChannel() {
         channel.setMethodCallHandler { call, result ->
+            Log.d(TAG, "Method call from Flutter: ${call.method} with args: ${call.arguments}")
             when (call.method) {
                 "play" -> {
                     exoPlayer.play()
@@ -339,7 +368,8 @@ class Media3PlayerView(
                 }
                 
                 "seekTo" -> {
-                    val position = call.argument<Long>("position") ?: 0L
+                    val positionArg = call.argument<Number>("position")
+                    val position = positionArg?.toLong() ?: 0L
                     exoPlayer.seekTo(position)
                     result.success(null)
                 }
@@ -395,6 +425,7 @@ class Media3PlayerView(
                 }
                 
                 else -> {
+                    Log.w(TAG, "Received unhandled method: ${call.method}")
                     // Track selection methods
                     when (call.method) {
                         "setAudioTrack" -> {
@@ -419,6 +450,7 @@ class Media3PlayerView(
     }
     
     private fun loadVideo(videoPath: String, autoPlay: Boolean = true, startPosition: Long? = null) {
+        Log.d(TAG, "loadVideo: path=$videoPath, autoPlay=$autoPlay, startPosition=$startPosition")
         try {
             val mediaItem = MediaItem.Builder()
                 .setUri(videoPath)
@@ -439,48 +471,75 @@ class Media3PlayerView(
             }
             
             exoPlayer.prepare()
+            Log.d(TAG, "ExoPlayer.prepare() called.")
             
         } catch (e: Exception) {
+            Log.e(TAG, "Error loading video: ${e.message}", e)
             channel.invokeMethod("onError", mapOf(
                 "error" to "Failed to load video: ${e.message}",
-                "errorCode" to -1
+                "errorCode" to -1 // Generic load error
             ))
         }
     }
     
     // Lifecycle management
     fun onStart() {
+        Log.d(TAG, "onStart called")
         startPositionUpdates()
     }
     
     fun onStop() {
+        Log.d(TAG, "onStop called")
         stopPositionUpdates()
-        savePlayerState()
+        savePlayerState() // It's good practice to save state here too
+        // Consider pausing the player if activity is fully stopped: exoPlayer.pause()
     }
     
     fun onResume() {
+        Log.d(TAG, "onResume called")
+        // For API 23 and below, player needs reinitialization if released.
+        // For API 24+, if player is just paused, it might resume automatically or need a play() call.
+        // Current setup doesn't release onPause for API 23-, so this might be okay.
+        // If playWhenReady was true, it should resume.
         if (android.os.Build.VERSION.SDK_INT <= 23) {
-            if (!isInitialized) {
-                // Player is already initialized in init
-            }
+            // If player was released onPause, it would need re-init here.
+            // This app's onPause for API 23- only saves state, doesn't release.
         }
+         startPositionUpdates() // Restart position updates if they were stopped
     }
     
     fun onPause() {
-        if (android.os.Build.VERSION.SDK_INT <= 23) {
-            savePlayerState()
-        }
+        Log.d(TAG, "onPause called")
+        // For API 23 and below, onStop is not guaranteed. Release player here.
+        // For API 24+, onStop will be called.
+        // However, to be safe and handle interruptions like calls, always pause.
+        exoPlayer.pause() // Ensure player is paused
+        stopPositionUpdates() // Stop updates when paused
+        savePlayerState()
+
+        // Original code for API 23 and below only saved state.
+        // Consider if releasing is better for older APIs if issues persist.
+        // if (android.os.Build.VERSION.SDK_INT <= 23) {
+        //     releasePlayer() // Example: if you decide to release on older APIs
+        // }
     }
     
     private fun savePlayerState() {
-        currentPosition = exoPlayer.currentPosition
-        mediaItemIndex = exoPlayer.currentMediaItemIndex
-        playWhenReady = exoPlayer.playWhenReady
+        if (exoPlayer.isCommandAvailable(Player.COMMAND_GET_CURRENT_MEDIA_ITEM)) {
+            currentPosition = exoPlayer.currentPosition
+            mediaItemIndex = exoPlayer.currentMediaItemIndex
+            playWhenReady = exoPlayer.playWhenReady
+            Log.d(TAG, "savePlayerState: pos=$currentPosition, itemIdx=$mediaItemIndex, playWhenReady=$playWhenReady")
+        } else {
+            Log.w(TAG, "savePlayerState: Player not ready to save state.")
+        }
     }
     
     override fun getView(): View = frameLayout
     
     override fun dispose() {
+        Log.d(TAG, "dispose called, releasing ExoPlayer.")
+        stopPositionUpdates()
         exoPlayer.release()
     }
 }
