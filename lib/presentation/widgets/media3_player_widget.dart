@@ -1,11 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
 import '../../core/platform/media3_player_controller.dart';
-
-// Enum for Zoom Modes
-enum ZoomMode { fit, stretch, zoomToFill, custom }
 
 /// Media3 Player Widget - Enhanced implementation with comprehensive controls
 class Media3PlayerWidget extends StatefulWidget {
@@ -140,8 +136,10 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _controlsAnimationController.forward();
   }
   
+import 'package:flutter/foundation.dart'; // Import for debugPrint
 
 // Enum for Zoom Modes
+enum ZoomMode { fit, stretch, zoomToFill, custom }
 
   void _initializePlayer([int? viewId]) {
     debugPrint('[_Media3PlayerWidgetState] _initializePlayer called with viewId: $viewId');
@@ -435,42 +433,52 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         _panOffset = Offset.zero;
       }
       // If scale or pan happens, it's custom zoom
-      if ((_scaleFactor - 1.0).abs() > 0.01 || _panOffset != Offset.zero) { // Use a small epsilon for float comparison
-         _currentZoomMode = ZoomMode.custom;
-         debugPrint('[_Media3PlayerWidgetState] Pinch zoom detected, mode set to Custom. Scale: $_scaleFactor, Pan: $_panOffset');
+      bool isPanned = _panOffset.dx.abs() >= 0.1 || _panOffset.dy.abs() >= 0.1; // More sensitive pan check
+      bool isScaled = (_scaleFactor - 1.0).abs() > 0.001; // Very small epsilon for scale being different from 1.0
+
+      if (isScaled || isPanned) {
+         if (_currentZoomMode != ZoomMode.custom) { // Avoid redundant setState if already custom
+            _currentZoomMode = ZoomMode.custom;
+            debugPrint('[_Media3PlayerWidgetState] Pinch zoom detected, mode set to Custom. Scale: $_scaleFactor, Pan: $_panOffset');
+         }
       }
-      _isZoomed = (_scaleFactor - 1.0).abs() > 0.01 || _panOffset != Offset.zero; // Update _isZoomed based on actual state
+      _isZoomed = isScaled || isPanned; // Update _isZoomed based on actual state
     });
   }
   
   void _onScaleEnd(ScaleEndDetails details) {
     if (!mounted) return;
 
-    // If, after the gesture, the scale is very close to 1.0 and pan is negligible,
-    // then consider it a reset to the default state (which is Fit mode).
-    bool isEffectivelyReset = (_scaleFactor - 1.0).abs() < 0.05 &&
-                              (_panOffset.dx.abs() < 1 && _panOffset.dy.abs() < 1);
+    // Determine if the current state is effectively the "default" (non-zoomed, non-panned) state.
+    // Use a very small epsilon for floating point comparisons to 1.0.
+    bool isScaleEffectivelyUnity = (_scaleFactor - 1.0).abs() < 0.001;
+    bool isPanEffectivelyZero = _panOffset.dx.abs() < 0.1 && _panOffset.dy.abs() < 0.1;
 
-    if (isEffectivelyReset) {
-      debugPrint('[_Media3PlayerWidgetState] Scale ended very close to 1.0, resetting to Fit mode. Scale: $_scaleFactor');
-      _resetZoom(); // _resetZoom also sets mode to fit and calls native resize.
+    if (isScaleEffectivelyUnity && isPanEffectivelyZero) {
+      // If ended very close to 1.0 scale and no pan, treat as reset.
+      debugPrint('[_Media3PlayerWidgetState] Scale ended at/very near 1.0 and no pan, resetting to Fit mode. Scale: $_scaleFactor');
+      _resetZoom(); // This sets mode to fit, calls native resize, and resets scale/pan.
     } else {
-      // Otherwise, the current scale (_scaleFactor can be < 1.0 here) is the new base.
-      _baseScaleFactor = _scaleFactor;
-      // _isZoomed should be true if scale is not 1.0 OR if there's panning.
-      _isZoomed = (_scaleFactor - 1.0).abs() > 0.01 || _panOffset != Offset.zero;
+      // Otherwise, the current custom zoom/pan is persisted.
+      _baseScaleFactor = _scaleFactor; // This is crucial for the next gesture to be incremental.
 
-      // Ensure mode is custom if any transform is applied and not already set
-      if (_currentZoomMode != ZoomMode.custom && _isZoomed) {
-          setState(() { // Ensure setState is called if mode changes
+      // Ensure _isZoomed is true if we are not in the reset state.
+      _isZoomed = true;
+
+      // If not already in custom mode (e.g., if a predefined mode was active and user just started pinching),
+      // set it to custom.
+      if (_currentZoomMode != ZoomMode.custom) {
+          setState(() {
               _currentZoomMode = ZoomMode.custom;
-              debugPrint('[_Media3PlayerWidgetState] Zoom ended, mode explicitly set to Custom. Scale: $_scaleFactor, Pan: $_panOffset');
+              debugPrint('[_Media3PlayerWidgetState] Zoom gesture ended, mode is Custom. Scale: $_scaleFactor, Pan: $_panOffset');
           });
-      } else if (!_isZoomed && _currentZoomMode == ZoomMode.custom) {
-        // If somehow it ended up not zoomed but still in custom mode, reset it.
-        // This case should ideally be covered by isEffectivelyReset.
-         debugPrint('[_Media3PlayerWidgetState] Scale ended at 1.0 from custom, resetting to Fit mode. Scale: $_scaleFactor');
-        _resetZoom();
+      } else {
+        // If already in custom mode, just ensure _isZoomed is correctly reflecting the state.
+        // This might involve a setState if _isZoomed was somehow false but should be true.
+        // However, _onScaleUpdate should keep _isZoomed fairly accurate.
+        // Forcing a setState here can be redundant if _onScaleUpdate handled it.
+        // Let's rely on _onScaleUpdate for _isZoomed during the gesture.
+         debugPrint('[_Media3PlayerWidgetState] Zoom gesture ended, remaining in Custom. Scale: $_scaleFactor, Pan: $_panOffset');
       }
     }
   }
@@ -541,7 +549,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       _isZoomed = false;
     });
     _controller?.setResizeMode(nativeModeString);
-    _showZoomToast(nativeModeString); // Show toast after mode is set
+    _showZoomToast(toastMessage); // Show toast after mode is set
 
     debugPrint('[_Media3PlayerWidgetState] Zoom mode cycled to: $_currentZoomMode, native mode: $nativeModeString');
     _resetControlsTimer();
