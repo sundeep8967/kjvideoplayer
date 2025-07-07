@@ -84,6 +84,9 @@ class Media3PlayerView(
 
         // Start periodic position updates
         positionUpdateHandler.post(positionUpdateRunnable)
+        
+        // Initialize volume observer
+        initializeVolumeObserver()
     }
     
     private fun createMedia3Player(context: Context): ExoPlayer {
@@ -586,7 +589,37 @@ class Media3PlayerView(
     override fun dispose() {
         Log.d(TAG, "dispose called, releasing ExoPlayer.")
         stopPositionUpdates()
+        
+        // Unregister volume observer
+        volumeContentObserver?.let {
+            context.contentResolver.unregisterContentObserver(it)
+        }
+        
         exoPlayer.release()
+    }
+    
+    private fun initializeVolumeObserver() {
+        volumeContentObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                super.onChange(selfChange)
+                // Notify Flutter about volume change
+                val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                val volumeRatio = if (maxVolume > 0) currentVolume.toDouble() / maxVolume.toDouble() else 0.0
+                
+                channel.invokeMethod("onSystemVolumeChanged", mapOf("volume" to volumeRatio))
+                Log.d(TAG, "System volume changed to: $volumeRatio")
+            }
+        }
+        
+        // Register observer for system volume changes
+        context.contentResolver.registerContentObserver(
+            Settings.System.getUriFor("volume_music"),
+            false,
+            volumeContentObserver!!
+        )
+        
+        Log.d(TAG, "Volume observer initialized")
     }
 }
 

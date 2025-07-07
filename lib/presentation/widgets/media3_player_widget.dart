@@ -69,6 +69,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   bool _showVolumeSlider = false;
   double _currentSpeed = 1.0;
   double _currentVolume = 1.0;
+  bool _isMuted = false;
   int _bufferedPercentage = 0;
   
   // Zoom and pan state
@@ -369,8 +370,10 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       return;
     }
     
-    // Set player internal volume to 1.0 (full) - let system volume control the actual level
-    _controller!.setVolume(1.0);
+    // Perfect 1:1 sync: App volume = System volume
+    // Player internal volume should match the actual volume level
+    _controller!.setVolume(volume);
+    
     // Control system volume using Media3
     _controller!.setSystemVolume(volume);
     
@@ -378,6 +381,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     if (!mounted) return;
     setState(() {
       _currentVolume = volume;
+      _isMuted = volume <= 0.0;
     });
   }
   
@@ -389,11 +393,13 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         if (mounted) {
           setState(() {
             _currentVolume = systemVolume;
+            // Update mute state based on initial volume level
+            _isMuted = systemVolume <= 0.0;
           });
-          // Set player internal volume to 1.0 (full) - system volume controls the actual level
-          _controller!.setVolume(1.0);
+          // Set player internal volume based on app mute state
+          _controller!.setVolume(_isMuted ? 0.0 : 1.0);
         }
-        debugPrint('[_Media3PlayerWidgetState] Initialized with system volume: $systemVolume');
+        debugPrint('[_Media3PlayerWidgetState] Initialized with system volume: $systemVolume, muted: $_isMuted');
       }
     } catch (e) {
       debugPrint('[_Media3PlayerWidgetState] Failed to get system volume: $e');
@@ -401,11 +407,36 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       if (mounted) {
         setState(() {
           _currentVolume = 0.7;
+          _isMuted = false;
         });
-        // Set player volume to 1.0 even with default
-        _controller?.setVolume(1.0);
+        // Set player volume based on mute state
+        _controller?.setVolume(_isMuted ? 0.0 : 1.0);
       }
     }
+  }
+  
+  void _toggleMute() {
+    if (_controller == null) return;
+    
+    setState(() {
+      _isMuted = !_isMuted;
+    });
+    
+    // Set player volume based on mute state
+    _controller!.setVolume(_isMuted ? 0.0 : 1.0);
+    
+    // If unmuting and current volume is 0, set to a reasonable level
+    if (!_isMuted && _currentVolume <= 0.0) {
+      _changeVolume(0.5); // Set to 50% when unmuting from 0
+    } else if (_isMuted) {
+      // When muting, set system volume to 0
+      _controller!.setSystemVolume(0.0);
+      setState(() {
+        _currentVolume = 0.0;
+      });
+    }
+    
+    debugPrint('[_Media3PlayerWidgetState] Mute toggled: $_isMuted, player volume: ${_isMuted ? 0.0 : 1.0}');
   }
   
   void _listenToSystemVolumeChanges() {
@@ -416,10 +447,12 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
           if (mounted) {
             setState(() {
               _currentVolume = volume;
+              // Update mute state based on volume level
+              _isMuted = volume <= 0.0;
             });
-            // Keep player internal volume at 1.0 - system volume controls the actual level
-            _controller!.setVolume(1.0);
-            debugPrint('[_Media3PlayerWidgetState] System volume changed to: $volume');
+            // Perfect 1:1 sync: Player volume = System volume
+            _controller!.setVolume(volume);
+            debugPrint('[_Media3PlayerWidgetState] System volume changed to: $volume, player volume set to: $volume');
           }
         });
       }

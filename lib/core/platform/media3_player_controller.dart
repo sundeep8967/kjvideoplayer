@@ -89,6 +89,9 @@ class Media3PlayerController {
         case 'onFullscreenToggle':
           _handleFullscreenToggle(call.arguments as Map<dynamic, dynamic>);
           break;
+        case 'onSystemVolumeChanged':
+          _handleSystemVolumeChanged(call.arguments as Map<dynamic, dynamic>);
+          break;
         default:
           debugPrint('[Media3PlayerController] Unhandled native method: ${call.method}');
       }
@@ -363,6 +366,12 @@ class Media3PlayerController {
       'isFullscreen': isFullscreen,
       'timestamp': DateTime.now().millisecondsSinceEpoch,
     });
+  }
+  
+  void _handleSystemVolumeChanged(Map<dynamic, dynamic> args) {
+    final volume = args['volume'] as double? ?? 0.5;
+    debugPrint('[Media3PlayerController] _handleSystemVolumeChanged: $volume');
+    _systemVolumeController.add(volume);
   }
   
   /// Select audio track by index
