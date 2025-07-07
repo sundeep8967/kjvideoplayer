@@ -1,6 +1,12 @@
 package com.sundeep.kjvideoplayer.player
 
 import android.content.Context
+import android.database.ContentObserver
+import android.media.AudioManager
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.widget.FrameLayout
@@ -29,6 +35,10 @@ class Media3PlayerView(
     private val creationParams: Map<String, Any>?
 ) : PlatformView {
     private val TAG = "Media3PlayerView" // For Logcat
+    
+    // Audio management
+    private val audioManager: AudioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private var volumeContentObserver: ContentObserver? = null
 
     // Handler for periodic position updates
     private val positionUpdateHandler = android.os.Handler(context.mainLooper)
@@ -387,6 +397,21 @@ class Media3PlayerView(
                 "setVolume" -> {
                     val volume = call.argument<Double>("volume") ?: 1.0
                     exoPlayer.volume = volume.toFloat()
+                    result.success(null)
+                }
+                
+                "getSystemVolume" -> {
+                    val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    val volumeRatio = if (maxVolume > 0) currentVolume.toDouble() / maxVolume.toDouble() else 0.0
+                    result.success(volumeRatio)
+                }
+                
+                "setSystemVolume" -> {
+                    val volume = call.argument<Double>("volume") ?: 0.7
+                    val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    val targetVolume = (volume * maxVolume).toInt()
+                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, 0)
                     result.success(null)
                 }
 

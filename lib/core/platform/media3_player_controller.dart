@@ -25,6 +25,7 @@ class Media3PlayerController {
   final StreamController<Map<String, dynamic>> _performanceController = StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _tracksController = StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _videoSizeController = StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<double> _systemVolumeController = StreamController<double>.broadcast();
   
   // Getters
   bool get isInitialized => _isInitialized;
@@ -43,6 +44,7 @@ class Media3PlayerController {
   Stream<Map<String, dynamic>> get onPerformanceUpdate => _performanceController.stream;
   Stream<Map<String, dynamic>> get onTracksChanged => _tracksController.stream;
   Stream<Map<String, dynamic>> get onVideoSizeChanged => _videoSizeController.stream;
+  Stream<double> get onSystemVolumeChanged => _systemVolumeController.stream;
   
   Media3PlayerController({required this.viewId}) {
     _channel = MethodChannel('media3_player_$viewId');
@@ -372,6 +374,32 @@ class Media3PlayerController {
       _errorController.add(_error);
     }
   }
+
+  /// Get system volume using Media3
+  Future<double> getSystemVolume() async {
+    debugPrint('[Media3PlayerController] Getting system volume');
+    try {
+      final result = await _channel.invokeMethod('getSystemVolume');
+      double volume = (result as double?) ?? 0.7;
+      debugPrint('[Media3PlayerController] System volume: $volume');
+      return volume;
+    } catch (e) {
+      debugPrint('[Media3PlayerController] Error getting system volume: $e');
+      return 0.7; // Default volume
+    }
+  }
+
+  /// Set system volume using Media3
+  Future<void> setSystemVolume(double volume) async {
+    debugPrint('[Media3PlayerController] Setting system volume to: $volume');
+    try {
+      await _channel.invokeMethod('setSystemVolume', {'volume': volume});
+      debugPrint('[Media3PlayerController] System volume set successfully');
+    } catch (e) {
+      debugPrint('[Media3PlayerController] Error setting system volume: $e');
+    }
+  }
+
 
   /// Set the resize mode for the player view
   Future<void> setResizeMode(String mode) async {

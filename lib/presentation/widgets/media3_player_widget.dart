@@ -79,6 +79,9 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   
   // Animation controllers
   late AnimationController _controlsAnimationController;
+  
+  // Volume listener for system volume changes
+  StreamSubscription<double>? _volumeSubscription;
   late AnimationController _settingsAnimationController;
   late Animation<double> _controlsOpacity;
   late Animation<double> _settingsSlideAnimation;
@@ -108,6 +111,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     WidgetsBinding.instance.addObserver(this);
     _initializeAnimations();
     _initializePlayer();
+    _initializeSystemVolume();
+    _listenToSystemVolumeChanges();
     _startControlsTimer();
   }
   
@@ -359,17 +364,68 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   
   void _changeVolume(double volume) {
     debugPrint('[_Media3PlayerWidgetState] _changeVolume called with volume: $volume');
-     if (_controller == null) {
+    if (_controller == null) {
       debugPrint('[_Media3PlayerWidgetState] _changeVolume: Controller is null.');
       return;
     }
-    _controller!.setVolume(volume);
+    
+    // Set player internal volume to 1.0 (full) - let system volume control the actual level
+    _controller!.setVolume(1.0);
+    // Control system volume using Media3
+    _controller!.setSystemVolume(volume);
+    
     // Optimistically update UI
     if (!mounted) return;
     setState(() {
       _currentVolume = volume;
     });
-    // No need to reset controls timer for volume usually, unless it makes sense for your UI
+  }
+  
+  void _initializeSystemVolume() async {
+    try {
+      // Get current system volume using Media3
+      if (_controller != null) {
+        double systemVolume = await _controller!.getSystemVolume();
+        if (mounted) {
+          setState(() {
+            _currentVolume = systemVolume;
+          });
+          // Set player internal volume to 1.0 (full) - system volume controls the actual level
+          _controller!.setVolume(1.0);
+        }
+        debugPrint('[_Media3PlayerWidgetState] Initialized with system volume: $systemVolume');
+      }
+    } catch (e) {
+      debugPrint('[_Media3PlayerWidgetState] Failed to get system volume: $e');
+      // Use default volume
+      if (mounted) {
+        setState(() {
+          _currentVolume = 0.7;
+        });
+        // Set player volume to 1.0 even with default
+        _controller?.setVolume(1.0);
+      }
+    }
+  }
+  
+  void _listenToSystemVolumeChanges() {
+    try {
+      // Listen to system volume changes using Media3
+      if (_controller != null) {
+        _volumeSubscription = _controller!.onSystemVolumeChanged.listen((volume) {
+          if (mounted) {
+            setState(() {
+              _currentVolume = volume;
+            });
+            // Keep player internal volume at 1.0 - system volume controls the actual level
+            _controller!.setVolume(1.0);
+            debugPrint('[_Media3PlayerWidgetState] System volume changed to: $volume');
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('[_Media3PlayerWidgetState] Failed to listen to system volume: $e');
+    }
   }
   
   void _seekForward() {
@@ -1477,6 +1533,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _initializedSubscription.cancel();
     _performanceSubscription.cancel();
     _tracksSubscription.cancel();
+    _volumeSubscription?.cancel();
     
     // Dispose controller
     _controller?.dispose();
