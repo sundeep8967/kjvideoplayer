@@ -690,7 +690,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             if (_error != null && _shouldShowErrorDialog(_error!))
               Center(
                 child: Container(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.black.withOpacity(0.8),
                     borderRadius: BorderRadius.circular(10),
@@ -784,7 +784,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 ? const SizedBox.shrink()
                 : Center(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                       decoration: BoxDecoration(
                         color: Colors.black.withOpacity(0.75),
                         borderRadius: BorderRadius.circular(25),
@@ -939,7 +939,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       left: 0,
       right: 0,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.bottomCenter,
@@ -1017,7 +1017,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             
             // Control buttons row
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 // Speed control
                 IconButton(
@@ -1127,7 +1127,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     return InkWell(
       onTap: () => _changePlaybackSpeed(speed),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         decoration: BoxDecoration(
           color: isSelected ? Colors.red.withOpacity(0.3) : Colors.transparent,
         ),
@@ -1207,7 +1207,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                   children: [
                     // Header
                     Padding(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(8),
                       child: Row(
                         children: [
                           const Text(
