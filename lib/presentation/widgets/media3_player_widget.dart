@@ -69,6 +69,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   bool _showVolumeSlider = false;
   double _currentSpeed = 1.0;
   double _currentVolume = 1.0;
+  bool _isMuted = false;
   int _bufferedPercentage = 0;
   
   // Zoom and pan state
@@ -80,9 +81,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   // Animation controllers
   late AnimationController _controlsAnimationController;
   
-  // Zoom indicator state
-  bool _showLeftZoomIndicator = false;
-  Timer? _leftZoomIndicatorTimer;
+  // Volume listener for system volume changes
+  StreamSubscription<double>? _volumeSubscription;
   late AnimationController _settingsAnimationController;
   late Animation<double> _controlsOpacity;
   late Animation<double> _settingsSlideAnimation;
@@ -153,6 +153,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       _controller = Media3PlayerController(viewId: viewId);
       debugPrint('[_Media3PlayerWidgetState] Media3PlayerController initialized.');
       _setupEventListeners();
+      _initializeSystemVolume();
+      _listenToSystemVolumeChanges();
     } else {
       debugPrint('[_Media3PlayerWidgetState] viewId is null, controller not initialized.');
     }
@@ -363,17 +365,103 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   
   void _changeVolume(double volume) {
     debugPrint('[_Media3PlayerWidgetState] _changeVolume called with volume: $volume');
-     if (_controller == null) {
+    if (_controller == null) {
       debugPrint('[_Media3PlayerWidgetState] _changeVolume: Controller is null.');
       return;
     }
-    _controller!.setVolume(volume);
-    // Optimistically update UI
+    
+    // Set system volume first
+    _controller!.setSystemVolume(volume);
+    
+    // Player volume should be 1.0 unless muted
+    _controller!.setVolume(volume <= 0.0 ? 0.0 : 1.0);
+    
+    // Update UI state
     if (!mounted) return;
     setState(() {
       _currentVolume = volume;
+      _isMuted = volume <= 0.0;
     });
-    // No need to reset controls timer for volume usually, unless it makes sense for your UI
+    
+    debugPrint('[_Media3PlayerWidgetState] Volume changed - System: $volume, Player: ${volume <= 0.0 ? 0.0 : 1.0}, Muted: $_isMuted');
+  }
+  
+  void _initializeSystemVolume() async {
+    try {
+      // Get current system volume using Media3
+      if (_controller != null) {
+        double systemVolume = await _controller!.getSystemVolume();
+        if (mounted) {
+          setState(() {
+            _currentVolume = systemVolume;
+            // Update mute state based on initial volume level
+            _isMuted = systemVolume <= 0.0;
+          });
+          // Set player volume to 1.0 unless muted - system volume controls actual output
+          _controller!.setVolume(_isMuted ? 0.0 : 1.0);
+        }
+        debugPrint('[_Media3PlayerWidgetState] Initialized - System volume: $systemVolume, Player volume: ${_isMuted ? 0.0 : 1.0}, Muted: $_isMuted');
+      }
+    } catch (e) {
+      debugPrint('[_Media3PlayerWidgetState] Failed to get system volume: $e');
+      // Use default volume
+      if (mounted) {
+        setState(() {
+          _currentVolume = 0.7;
+          _isMuted = false;
+        });
+        // Set player volume to 1.0 for default case
+        _controller?.setVolume(1.0);
+      }
+    }
+  }
+  
+  void _toggleMute() {
+    if (_controller == null) return;
+    
+    setState(() {
+      _isMuted = !_isMuted;
+    });
+    
+    // Set player volume based on mute state
+    _controller!.setVolume(_isMuted ? 0.0 : 1.0);
+    
+    // If unmuting and current volume is 0, set to a reasonable level
+    if (!_isMuted && _currentVolume <= 0.0) {
+      _changeVolume(0.5); // Set to 50% when unmuting from 0
+    } else if (_isMuted) {
+      // When muting, set system volume to 0
+      _controller!.setSystemVolume(0.0);
+      setState(() {
+        _currentVolume = 0.0;
+      });
+    }
+    
+    debugPrint('[_Media3PlayerWidgetState] Mute toggled: $_isMuted, player volume: ${_isMuted ? 0.0 : 1.0}');
+  }
+  
+  void _listenToSystemVolumeChanges() {
+    try {
+      // Listen to system volume changes using Media3
+      if (_controller != null) {
+        _volumeSubscription = _controller!.onSystemVolumeChanged.listen((volume) {
+          if (!mounted) return;
+          final wasMuted = _isMuted;
+          final newMuted = volume <= 0.0;
+          setState(() {
+            _currentVolume = volume;
+            _isMuted = newMuted;
+          });
+          // Only update player volume if mute state changed, to avoid feedback loop
+          if (wasMuted != newMuted) {
+            _controller!.setVolume(newMuted ? 0.0 : 1.0);
+          }
+          debugPrint('[_Media3PlayerWidgetState] System volume changed to: $volume, isMuted: $_isMuted, player volume set to: ${_isMuted ? 0.0 : 1.0}');
+        });
+      }
+    } catch (e) {
+      debugPrint('[_Media3PlayerWidgetState] Failed to listen to system volume: $e');
+    }
   }
   
   void _seekForward() {
@@ -416,16 +504,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   
   // Zoom and pan gesture handlers
   void _onScaleStart(ScaleStartDetails details) {
-    if (!mounted) return;
     // Store initial scale factor when gesture starts
     _baseScaleFactor = _scaleFactor;
-    // Show zoom indicator when zoom gesture starts
-    setState(() {
-      _showLeftZoomIndicator = true;
-    });
-    // Cancel any existing timer
-    _leftZoomIndicatorTimer?.cancel();
-    debugPrint('[_Media3PlayerWidgetState] Scale gesture started. Base scale: $_baseScaleFactor');
   }
   
   void _onScaleUpdate(ScaleUpdateDetails details) {
@@ -496,19 +576,6 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         // Let's rely on _onScaleUpdate for _isZoomed during the gesture.
          debugPrint('[_Media3PlayerWidgetState] Zoom gesture ended, remaining in Custom. Scale: $_scaleFactor, Pan: $_panOffset');
       }
-      
-      // Show left zoom indicator when fingers are removed
-      setState(() {
-        _showLeftZoomIndicator = true;
-      });
-      _leftZoomIndicatorTimer?.cancel();
-      _leftZoomIndicatorTimer = Timer(const Duration(seconds: 3), () {
-        if (mounted) {
-          setState(() {
-            _showLeftZoomIndicator = false;
-          });
-        }
-      });
     }
   }
   
@@ -535,7 +602,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       _zoomModeToastMessage = message;
     });
     _zoomModeToastTimer?.cancel();
-    _zoomModeToastTimer = Timer(const Duration(seconds: 3), () {
+    _zoomModeToastTimer = Timer(const Duration(seconds: 2), () {
       if (mounted) {
         setState(() {
           _zoomModeToastMessage = null;
@@ -797,8 +864,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             if (_showSettings)
               _buildSettingsPanel(),
               
-          // Zoom indicator (for pinch-zoom level) - shows for 3 seconds after finger release
-          if (_isZoomed && _currentZoomMode == ZoomMode.custom && _showLeftZoomIndicator)
+          // Zoom indicator (for pinch-zoom level)
+          if (_isZoomed && _currentZoomMode == ZoomMode.custom) // Only show for custom pinch zoom
             _buildZoomIndicator(),
 
           // Zoom Mode Toast
@@ -880,17 +947,21 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 ],
               ),
             ),
-            // Zoom reset button (only show when zoomed)
-            if (_isZoomed)
-              IconButton(
-                onPressed: _resetZoom,
-                icon: const Icon(Icons.zoom_out_map, color: Colors.white, size: 24),
-                tooltip: 'Reset Zoom',
-              ),
-            // IconButton for cycling zoom modes could go here or in bottom controls
+            // Subtitle control
             IconButton(
               onPressed: () {
-                // This is the settings button
+                setState(() {
+                  _showSettings = true;
+                });
+                _settingsAnimationController.forward();
+                _resetControlsTimer();
+              },
+              icon: const Icon(Icons.subtitles, color: Colors.white, size: 24),
+              tooltip: 'Subtitles',
+            ),
+            // Settings button
+            IconButton(
+              onPressed: () {
                 setState(() {
                   _showSettings = !_showSettings;
                 });
@@ -902,6 +973,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 _resetControlsTimer();
               },
               icon: const Icon(Icons.settings, color: Colors.white, size: 24),
+              tooltip: 'Settings',
             ),
           ],
         ),
@@ -1059,17 +1131,6 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                   ),
                 ),
                 
-                // Subtitle control
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      _showSettings = true;
-                    });
-                    _settingsAnimationController.forward();
-                    _resetControlsTimer();
-                  },
-                  icon: const Icon(Icons.subtitles, color: Colors.white),
-                ),
                 
                 // Volume control
                 IconButton(
@@ -1087,22 +1148,6 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                   ),
                 ),
                 
-                // Bookmark
-                IconButton(
-                  onPressed: _addBookmark,
-                  icon: const Icon(Icons.bookmark_add, color: Colors.white),
-                ),
-
-                // Fullscreen (handled by Media3)
-                IconButton(
-                  onPressed: () {
-                      debugPrint('[_Media3PlayerWidgetState] Fullscreen button tapped.');
-                    _controller?.enterFullscreen();
-                    _resetControlsTimer();
-                  },
-                  icon: const Icon(Icons.fullscreen, color: Colors.white),
-                ),
-
                 // Zoom Cycle Button
                 IconButton(
                   onPressed: _cycleZoomMode,
@@ -1115,6 +1160,14 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                   ),
                   tooltip: 'Cycle Zoom Mode (${_currentZoomMode.toString().split('.').last})',
                 ),
+                
+                // Zoom reset button (only show when zoomed)
+                if (_isZoomed)
+                  IconButton(
+                    onPressed: _resetZoom,
+                    icon: const Icon(Icons.zoom_out_map, color: Colors.white),
+                    tooltip: 'Reset Zoom',
+                  ),
               ],
             ),
           ],
@@ -1518,6 +1571,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _initializedSubscription.cancel();
     _performanceSubscription.cancel();
     _tracksSubscription.cancel();
+    _volumeSubscription?.cancel();
     
     // Dispose controller
     _controller?.dispose();

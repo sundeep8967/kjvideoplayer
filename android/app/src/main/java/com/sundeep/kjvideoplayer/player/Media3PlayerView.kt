@@ -1,6 +1,15 @@
 package com.sundeep.kjvideoplayer.player
 
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
+import android.database.ContentObserver
+import android.media.AudioManager
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.widget.FrameLayout
@@ -29,6 +38,11 @@ class Media3PlayerView(
     private val creationParams: Map<String, Any>?
 ) : PlatformView {
     private val TAG = "Media3PlayerView" // For Logcat
+    
+    // Audio management
+    private val audioManager: AudioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private var volumeContentObserver: ContentObserver? = null
+    private var volumeBroadcastReceiver: BroadcastReceiver? = null
 
     // Handler for periodic position updates
     private val positionUpdateHandler = android.os.Handler(context.mainLooper)
@@ -63,17 +77,40 @@ class Media3PlayerView(
         setupPlayerView()
         setupMethodChannel()
         setupPlayerListener()
-        
+
         val videoPath = creationParams?.get("videoPath") as? String
         val autoPlay = creationParams?.get("autoPlay") as? Boolean ?: true
         val startPosition = creationParams?.get("startPosition") as? Long
-        
+
         if (videoPath != null) {
             loadVideo(videoPath, autoPlay, startPosition)
         }
 
         // Start periodic position updates
         positionUpdateHandler.post(positionUpdateRunnable)
+
+        // Initialize volume observer
+        initializeVolumeObserver()
+        // Initialize volume broadcast receiver
+        initializeVolumeBroadcastReceiver()
+    }
+
+    private fun initializeVolumeBroadcastReceiver() {
+        if (volumeBroadcastReceiver != null) return
+        volumeBroadcastReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == "android.media.VOLUME_CHANGED_ACTION") {
+                    val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    val volumeRatio = if (maxVolume > 0) currentVolume.toDouble() / maxVolume.toDouble() else 0.0
+                    channel.invokeMethod("onSystemVolumeChanged", mapOf("volume" to volumeRatio))
+                    Log.d(TAG, "BroadcastReceiver: System volume changed to: $volumeRatio")
+                }
+            }
+        }
+        val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+        context.registerReceiver(volumeBroadcastReceiver, filter)
+        Log.d(TAG, "Volume broadcast receiver initialized")
     }
     
     private fun createMedia3Player(context: Context): ExoPlayer {
@@ -389,6 +426,29 @@ class Media3PlayerView(
                     exoPlayer.volume = volume.toFloat()
                     result.success(null)
                 }
+                
+                "getSystemVolume" -> {
+                    val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    val volumeRatio = if (maxVolume > 0) currentVolume.toDouble() / maxVolume.toDouble() else 0.0
+                    result.success(volumeRatio)
+                }
+                
+                "setSystemVolume" -> {
+                    val volume = call.argument<Double>("volume") ?: 0.7
+                    val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    val targetVolume = (volume * maxVolume).toInt()
+                    
+                    // Use FLAG_SHOW_UI to show system volume UI and properly handle mute state
+                    val flags = if (targetVolume > 0) {
+                        AudioManager.FLAG_SHOW_UI or AudioManager.FLAG_PLAY_SOUND
+                    } else {
+                        AudioManager.FLAG_SHOW_UI
+                    }
+                    
+                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, flags)
+                    result.success(null)
+                }
 
                 "setResizeMode" -> {
                     val modeString = call.argument<String>("mode")
@@ -561,7 +621,47 @@ class Media3PlayerView(
     override fun dispose() {
         Log.d(TAG, "dispose called, releasing ExoPlayer.")
         stopPositionUpdates()
+        
+        // Unregister volume observer
+        volumeContentObserver?.let {
+            context.contentResolver.unregisterContentObserver(it)
+        }
+        // Unregister volume broadcast receiver
+        volumeBroadcastReceiver?.let {
+            try {
+                context.unregisterReceiver(it)
+                Log.d(TAG, "Volume broadcast receiver unregistered")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to unregister volume broadcast receiver: ${e.message}")
+            }
+        }
+        volumeBroadcastReceiver = null
+        
         exoPlayer.release()
+    }
+    
+    private fun initializeVolumeObserver() {
+        volumeContentObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                super.onChange(selfChange)
+                // Notify Flutter about volume change
+                val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                val volumeRatio = if (maxVolume > 0) currentVolume.toDouble() / maxVolume.toDouble() else 0.0
+                
+                channel.invokeMethod("onSystemVolumeChanged", mapOf("volume" to volumeRatio))
+                Log.d(TAG, "System volume changed to: $volumeRatio")
+            }
+        }
+        
+        // Register observer for system volume changes
+        context.contentResolver.registerContentObserver(
+            Settings.System.getUriFor("volume_music"),
+            false,
+            volumeContentObserver!!
+        )
+        
+        Log.d(TAG, "Volume observer initialized")
     }
 }
 
