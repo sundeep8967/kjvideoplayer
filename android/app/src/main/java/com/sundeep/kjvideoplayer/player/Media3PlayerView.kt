@@ -1,7 +1,6 @@
 package com.sundeep.kjvideoplayer.player
 
 import android.content.Context
-import android.util.Log
 import android.view.View
 import android.widget.FrameLayout
 import androidx.annotation.OptIn
@@ -10,6 +9,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.*
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.*
+import androidx.media3.ui.AspectRatioFrameLayout // Required for RESIZE_MODE constants
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.StandardMessageCodec
@@ -22,10 +22,12 @@ import io.flutter.plugin.platform.PlatformViewFactory
  */
 @OptIn(UnstableApi::class)
 class Media3PlayerView(
-    private val context: Context,
-    private val messenger: BinaryMessenger,
-    private val id: Int,
-    private val creationParams: Map<String, Any>?
+    context: Context,
+    messenger: BinaryMessenger,
+    id: Int,
+    creationParams: Map<String, Any>?
+import android.util.Log
+
 ) : PlatformView {
     private val TAG = "Media3PlayerView" // For Logcat
 
@@ -220,6 +222,9 @@ class Media3PlayerView(
             isLongClickable = false
             addView(playerView)
         }
+        // Set initial resize mode
+        playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+        Log.d(TAG, "Initial resizeMode set to FIT")
     }
     
     private fun setupPlayerListener() {
@@ -385,6 +390,22 @@ class Media3PlayerView(
                     exoPlayer.volume = volume.toFloat()
                     result.success(null)
                 }
+
+                "setResizeMode" -> {
+                    val modeString = call.argument<String>("mode")
+                    val resizeMode = when (modeString) {
+                        "fit" -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        "stretch" -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        "zoomToFill" -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        else -> {
+                            Log.w(TAG, "Unknown resize mode: $modeString, defaulting to FIT")
+                            AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        }
+                    }
+                    playerView.resizeMode = resizeMode
+                    Log.d(TAG, "Set resizeMode to $modeString ($resizeMode)")
+                    result.success(null)
+                }
                 
                 "getCurrentPosition" -> {
                     result.success(exoPlayer.currentPosition)
@@ -522,6 +543,7 @@ class Media3PlayerView(
         // if (android.os.Build.VERSION.SDK_INT <= 23) {
         //     releasePlayer() // Example: if you decide to release on older APIs
         // }
+        // Make sure playerView is also paused visually if needed, though ExoPlayer handles rendering.
     }
     
     private fun savePlayerState() {
