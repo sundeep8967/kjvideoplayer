@@ -1,6 +1,9 @@
 package com.sundeep.kjvideoplayer.player
 
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.Intent
+import android.content.IntentFilter
 import android.database.ContentObserver
 import android.media.AudioManager
 import android.net.Uri
@@ -39,6 +42,7 @@ class Media3PlayerView(
     // Audio management
     private val audioManager: AudioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var volumeContentObserver: ContentObserver? = null
+    private var volumeBroadcastReceiver: BroadcastReceiver? = null
 
     // Handler for periodic position updates
     private val positionUpdateHandler = android.os.Handler(context.mainLooper)
@@ -73,20 +77,40 @@ class Media3PlayerView(
         setupPlayerView()
         setupMethodChannel()
         setupPlayerListener()
-        
+
         val videoPath = creationParams?.get("videoPath") as? String
         val autoPlay = creationParams?.get("autoPlay") as? Boolean ?: true
         val startPosition = creationParams?.get("startPosition") as? Long
-        
+
         if (videoPath != null) {
             loadVideo(videoPath, autoPlay, startPosition)
         }
 
         // Start periodic position updates
         positionUpdateHandler.post(positionUpdateRunnable)
-        
+
         // Initialize volume observer
         initializeVolumeObserver()
+        // Initialize volume broadcast receiver
+        initializeVolumeBroadcastReceiver()
+    }
+
+    private fun initializeVolumeBroadcastReceiver() {
+        if (volumeBroadcastReceiver != null) return
+        volumeBroadcastReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == "android.media.VOLUME_CHANGED_ACTION") {
+                    val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    val volumeRatio = if (maxVolume > 0) currentVolume.toDouble() / maxVolume.toDouble() else 0.0
+                    channel.invokeMethod("onSystemVolumeChanged", mapOf("volume" to volumeRatio))
+                    Log.d(TAG, "BroadcastReceiver: System volume changed to: $volumeRatio")
+                }
+            }
+        }
+        val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+        context.registerReceiver(volumeBroadcastReceiver, filter)
+        Log.d(TAG, "Volume broadcast receiver initialized")
     }
     
     private fun createMedia3Player(context: Context): ExoPlayer {
@@ -414,7 +438,15 @@ class Media3PlayerView(
                     val volume = call.argument<Double>("volume") ?: 0.7
                     val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                     val targetVolume = (volume * maxVolume).toInt()
-                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, 0)
+                    
+                    // Use FLAG_SHOW_UI to show system volume UI and properly handle mute state
+                    val flags = if (targetVolume > 0) {
+                        AudioManager.FLAG_SHOW_UI or AudioManager.FLAG_PLAY_SOUND
+                    } else {
+                        AudioManager.FLAG_SHOW_UI
+                    }
+                    
+                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, flags)
                     result.success(null)
                 }
 
@@ -594,6 +626,16 @@ class Media3PlayerView(
         volumeContentObserver?.let {
             context.contentResolver.unregisterContentObserver(it)
         }
+        // Unregister volume broadcast receiver
+        volumeBroadcastReceiver?.let {
+            try {
+                context.unregisterReceiver(it)
+                Log.d(TAG, "Volume broadcast receiver unregistered")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to unregister volume broadcast receiver: ${e.message}")
+            }
+        }
+        volumeBroadcastReceiver = null
         
         exoPlayer.release()
     }

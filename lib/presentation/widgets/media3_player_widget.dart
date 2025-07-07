@@ -112,8 +112,6 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     WidgetsBinding.instance.addObserver(this);
     _initializeAnimations();
     _initializePlayer();
-    _initializeSystemVolume();
-    _listenToSystemVolumeChanges();
     _startControlsTimer();
   }
   
@@ -155,6 +153,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       _controller = Media3PlayerController(viewId: viewId);
       debugPrint('[_Media3PlayerWidgetState] Media3PlayerController initialized.');
       _setupEventListeners();
+      _initializeSystemVolume();
+      _listenToSystemVolumeChanges();
     } else {
       debugPrint('[_Media3PlayerWidgetState] viewId is null, controller not initialized.');
     }
@@ -370,19 +370,20 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       return;
     }
     
-    // Perfect 1:1 sync: App volume = System volume
-    // Player internal volume should match the actual volume level
-    _controller!.setVolume(volume);
-    
-    // Control system volume using Media3
+    // Set system volume first
     _controller!.setSystemVolume(volume);
     
-    // Optimistically update UI
+    // Player volume should be 1.0 unless muted
+    _controller!.setVolume(volume <= 0.0 ? 0.0 : 1.0);
+    
+    // Update UI state
     if (!mounted) return;
     setState(() {
       _currentVolume = volume;
       _isMuted = volume <= 0.0;
     });
+    
+    debugPrint('[_Media3PlayerWidgetState] Volume changed - System: $volume, Player: ${volume <= 0.0 ? 0.0 : 1.0}, Muted: $_isMuted');
   }
   
   void _initializeSystemVolume() async {
@@ -396,10 +397,10 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             // Update mute state based on initial volume level
             _isMuted = systemVolume <= 0.0;
           });
-          // Set player internal volume based on app mute state
+          // Set player volume to 1.0 unless muted - system volume controls actual output
           _controller!.setVolume(_isMuted ? 0.0 : 1.0);
         }
-        debugPrint('[_Media3PlayerWidgetState] Initialized with system volume: $systemVolume, muted: $_isMuted');
+        debugPrint('[_Media3PlayerWidgetState] Initialized - System volume: $systemVolume, Player volume: ${_isMuted ? 0.0 : 1.0}, Muted: $_isMuted');
       }
     } catch (e) {
       debugPrint('[_Media3PlayerWidgetState] Failed to get system volume: $e');
@@ -409,8 +410,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
           _currentVolume = 0.7;
           _isMuted = false;
         });
-        // Set player volume based on mute state
-        _controller?.setVolume(_isMuted ? 0.0 : 1.0);
+        // Set player volume to 1.0 for default case
+        _controller?.setVolume(1.0);
       }
     }
   }
@@ -444,16 +445,18 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       // Listen to system volume changes using Media3
       if (_controller != null) {
         _volumeSubscription = _controller!.onSystemVolumeChanged.listen((volume) {
-          if (mounted) {
-            setState(() {
-              _currentVolume = volume;
-              // Update mute state based on volume level
-              _isMuted = volume <= 0.0;
-            });
-            // Perfect 1:1 sync: Player volume = System volume
-            _controller!.setVolume(volume);
-            debugPrint('[_Media3PlayerWidgetState] System volume changed to: $volume, player volume set to: $volume');
+          if (!mounted) return;
+          final wasMuted = _isMuted;
+          final newMuted = volume <= 0.0;
+          setState(() {
+            _currentVolume = volume;
+            _isMuted = newMuted;
+          });
+          // Only update player volume if mute state changed, to avoid feedback loop
+          if (wasMuted != newMuted) {
+            _controller!.setVolume(newMuted ? 0.0 : 1.0);
           }
+          debugPrint('[_Media3PlayerWidgetState] System volume changed to: $volume, isMuted: $_isMuted, player volume set to: ${_isMuted ? 0.0 : 1.0}');
         });
       }
     } catch (e) {
