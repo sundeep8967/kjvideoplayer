@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
 
 /// Media3 Player Controller - Clean implementation without NextPlayer
 class Media3PlayerController {
@@ -47,6 +46,7 @@ class Media3PlayerController {
     _setupMethodCallHandler();
 }
   
+import 'package:flutter/foundation.dart'; // Import for debugPrint
 
   void _setupMethodCallHandler() {
     _channel.setMethodCallHandler((call) async {
@@ -367,6 +367,19 @@ class Media3PlayerController {
       await _channel.invokeMethod('setAudioTrack', {'index': index});
     } catch (e) {
       _error = e.toString();
+      _errorController.add(_error);
+    }
+  }
+
+  /// Set the resize mode for the player view
+  Future<void> setResizeMode(String mode) async {
+    debugPrint('[Media3PlayerController] Invoking native setResizeMode($mode)');
+    try {
+      await _channel.invokeMethod('setResizeMode', {'mode': mode});
+      debugPrint('[Media3PlayerController] Native setResizeMode() invoked successfully');
+    } catch (e) {
+      debugPrint('[Media3PlayerController] Error invoking native setResizeMode(): $e');
+      _error = e.toString(); // Optionally propagate error
       _errorController.add(_error);
     }
   }
