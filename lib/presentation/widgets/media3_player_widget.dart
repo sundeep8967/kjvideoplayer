@@ -93,6 +93,9 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   List<Map<String, dynamic>> _subtitleTracks = [];
   int? _currentAudioTrackIndex; // To store the currently selected audio track index
   
+  // Audio tracks from current video for music panel
+  List<Map<String, dynamic>> _videoAudioTracks = [];
+  
   // Performance monitoring
   Map<String, dynamic> _performanceData = {};
   String? _zoomModeToastMessage; // For displaying zoom mode name
@@ -298,6 +301,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       });
       // When tracks change, re-fetch the current audio track index
       _fetchAndUpdateCurrentAudioTrackIndex();
+      // Process audio tracks for the music panel
+      _processVideoAudioTracks();
     });
     debugPrint('[_Media3PlayerWidgetState] _setupEventListeners: Listeners setup complete.');
   }
@@ -1006,20 +1011,14 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 },
                 offset: const Offset(0, 40), // Adjust offset as needed
               ),
-            // Music button
+            // Music button - Show available audio tracks
             IconButton(
               onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Music feature coming soon!'),
-                    duration: Duration(seconds: 2),
-                    backgroundColor: Colors.blue,
-                  ),
-                );
+                _showAudioTracksBottomSheet();
                 _resetControlsTimer();
               },
               icon: const Icon(Icons.music_note, color: Colors.white, size: 24),
-              tooltip: 'Music',
+              tooltip: 'Audio Tracks',
             ),
             // Settings button
             IconButton(
@@ -1613,6 +1612,165 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     }
   }
   
+  void _processVideoAudioTracks() {
+    try {
+      print('Processing video audio tracks...');
+      print('Available audio tracks: ${_audioTracks.length}');
+      
+      List<Map<String, dynamic>> videoAudioTracks = [];
+      
+      for (int i = 0; i < _audioTracks.length; i++) {
+        final track = _audioTracks[i];
+        final trackName = track['name'] ?? track['language'] ?? 'Audio Track ${i + 1}';
+        final language = track['language'] ?? 'Unknown';
+        final mimeType = track['mimeType'] ?? 'Unknown';
+        final bitrate = track['bitrate'] ?? 0;
+        final sampleRate = track['sampleRate'] ?? 0;
+        final channelCount = track['channelCount'] ?? 0;
+        
+        videoAudioTracks.add({
+          'index': i,
+          'name': trackName,
+          'language': language,
+          'mimeType': mimeType,
+          'bitrate': bitrate,
+          'sampleRate': sampleRate,
+          'channelCount': channelCount,
+          'isSelected': _currentAudioTrackIndex == i,
+          'displayName': _formatAudioTrackName(trackName, language, bitrate),
+        });
+        
+        print('Audio Track $i: $trackName ($language) - $mimeType');
+      }
+      
+      setState(() {
+        _videoAudioTracks = videoAudioTracks;
+      });
+      
+      print('Total video audio tracks processed: ${videoAudioTracks.length}');
+    } catch (e) {
+      print('Error processing video audio tracks: $e');
+    }
+  }
+  
+  String _formatAudioTrackName(String name, String language, int bitrate) {
+    String displayName = name;
+    
+    if (language != 'Unknown' && language.isNotEmpty) {
+      displayName += ' ($language)';
+    }
+    
+    if (bitrate > 0) {
+      final bitrateKbps = (bitrate / 1000).round();
+      displayName += ' - ${bitrateKbps}kbps';
+    }
+    
+    return displayName;
+  }
+
+  void _showAudioTracksBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.black87,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                children: [
+                  const Icon(Icons.music_note, color: Colors.white, size: 24),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Audio Tracks',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close, color: Colors.white),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              
+              // Audio tracks list
+              if (_audioTracks.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: Text(
+                      'No audio tracks available',
+                      style: TextStyle(color: Colors.white70, fontSize: 16),
+                    ),
+                  ),
+                )
+              else
+                ...List.generate(_audioTracks.length, (index) {
+                  final track = _audioTracks[index];
+                  final trackName = track['name'] ?? track['language'] ?? 'Audio Track ${index + 1}';
+                  final language = track['language'] ?? 'Unknown';
+                  final bitrate = track['bitrate'] ?? 0;
+                  final isSelected = _currentAudioTrackIndex == index;
+                  final displayName = _formatAudioTrackName(trackName, language, bitrate);
+                  
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? Colors.blue.withOpacity(0.3) : Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: isSelected ? Border.all(color: Colors.blue, width: 2) : null,
+                    ),
+                    child: ListTile(
+                      leading: Icon(
+                        isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                        color: isSelected ? Colors.blue : Colors.white70,
+                      ),
+                      title: Text(
+                        displayName,
+                        style: TextStyle(
+                          color: isSelected ? Colors.blue : Colors.white,
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                      subtitle: language != 'Unknown' && language.isNotEmpty
+                          ? Text(
+                              'Language: $language',
+                              style: const TextStyle(color: Colors.white70, fontSize: 12),
+                            )
+                          : null,
+                      onTap: () async {
+                        if (!isSelected) {
+                          await _controller?.setAudioTrack(index);
+                          setState(() {
+                            _currentAudioTrackIndex = index;
+                          });
+                          await _fetchAndUpdateCurrentAudioTrackIndex();
+                        }
+                        Navigator.pop(context);
+                      },
+                    ),
+                  );
+                }),
+              
+              const SizedBox(height: 20),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
