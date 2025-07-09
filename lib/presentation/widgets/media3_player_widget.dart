@@ -2358,61 +2358,81 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     // Ensure we have the latest tracks data
     _processVideoAudioTracks();
     
-    showModalBottomSheet(
+    showGeneralDialog(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (BuildContext context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.3,
-          maxChildSize: 0.9,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: BoxDecoration(
-                color: Colors.black87,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Handle bar
-                  Container(
-                    width: 40,
-                    height: 4,
-                    margin: EdgeInsets.symmetric(vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[400],
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(1.0, 0.0),
+            end: Offset.zero,
+          ).animate(CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          )),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.3,
+                height: MediaQuery.of(context).size.height,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerRight,
+                    end: Alignment.centerLeft,
+                    colors: [
+                      Colors.black.withOpacity(0.95),
+                      Colors.black.withOpacity(0.85),
+                      Colors.black.withOpacity(0.75),
+                    ],
+                    stops: const [0.0, 0.6, 1.0],
                   ),
-                  // Header
-                  Flexible(
-                    flex: 0,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.music_note, color: Colors.white, size: 24),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Audio Tracks (${_audioTracks.length})',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    bottomLeft: Radius.circular(20),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 15,
+                      offset: const Offset(-3, 0),
+                    ),
+                  ],
+                ),
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      // Header
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.music_note, color: Colors.white, size: 16),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Audio (${_audioTracks.length})',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
-                          ),
-                          IconButton(
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(Icons.close, color: Colors.white),
-                          ),
-                        ],
+                            GestureDetector(
+                              onTap: () => Navigator.pop(context),
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                child: const Icon(Icons.close, color: Colors.white70, size: 16),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
               
               // Audio tracks list
               if (_videoAudioTracks.isEmpty)
@@ -2430,10 +2450,9 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 )
               else
                 Expanded(
-                  child: ListView.builder(
-                    controller: scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _videoAudioTracks.length,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        itemCount: _videoAudioTracks.length,
                     itemBuilder: (context, index) {
                       final track = _videoAudioTracks[index];
                       final isSelected = track['isSelected'] ?? false;
@@ -2443,75 +2462,81 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                       final bitrate = track['bitrate'] ?? 0;
                       
                       return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
+                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
-                          color: isSelected ? Colors.blue.withOpacity(0.2) : Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
-                          border: isSelected ? Border.all(color: Colors.blue, width: 2) : null,
+                          color: isSelected ? Colors.blue.withOpacity(0.2) : Colors.white.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: isSelected ? Border.all(color: Colors.blue, width: 1) : null,
                         ),
-                        child: ListTile(
-                          leading: Icon(
-                            isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-                            color: isSelected ? Colors.blue : Colors.white70,
-                          ),
-                          title: Text(
-                            displayName,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: () async {
+                              try {
+                                final trackIndex = track['index'] ?? index;
+                                await _controller?.selectAudioTrack(trackIndex);
+                                if (mounted) {
+                                  Navigator.pop(context);
+                                }
+                              } catch (e) {
+                                if (mounted) {
+                                  Navigator.pop(context);
+                                }
+                              }
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 16,
+                                    height: 16,
+                                    decoration: BoxDecoration(
+                                      color: isSelected ? Colors.blue : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: isSelected ? Colors.blue : Colors.white.withOpacity(0.3),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: isSelected 
+                                      ? const Icon(Icons.check, color: Colors.white, size: 10)
+                                      : null,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          displayName,
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                                            fontSize: 11,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                        ),
+                                        const SizedBox(height: 1),
+                                        Text(
+                                          language,
+                                          style: TextStyle(
+                                            color: isSelected ? Colors.blue.shade200 : Colors.white60,
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w400,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
                           ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('Language: $language', 
-                                style: const TextStyle(color: Colors.white70),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text('Codec: $codec', 
-                                style: const TextStyle(color: Colors.white70),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              if (bitrate > 0) Text('Bitrate: ${bitrate} bps', 
-                                style: const TextStyle(color: Colors.white70),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                          onTap: () async {
-                            try {
-                              final trackIndex = track['index'] ?? index;
-                              debugPrint('Attempting to select track at index: $trackIndex');
-                              
-                              await _controller?.selectAudioTrack(trackIndex);
-                              await _fetchAndUpdateCurrentAudioTrackIndex();
-                              _processVideoAudioTracks();
-                              
-                              if (mounted) {
-                                Navigator.pop(context);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Audio track selected successfully'),
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              debugPrint('Error selecting audio track: $e');
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Failed to select audio track: $e'),
-                                    backgroundColor: Colors.red,
-                                    duration: Duration(seconds: 3),
-                                  ),
-                                );
-                              }
-                            }
-                          },
                         ),
                       );
                     },
@@ -2519,10 +2544,12 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 ),
               
               const SizedBox(height: 20),
-                ],
+                    ],
+                  ),
+                ),
               ),
-            );
-          },
+            ),
+          ),
         );
       },
     );

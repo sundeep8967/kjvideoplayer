@@ -17,6 +17,9 @@ class VideoSettingsDialog {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
       builder: (context) => _VideoSettingsPanel(
         controller: controller,
         currentSpeed: currentSpeed,
@@ -75,8 +78,12 @@ class _VideoSettingsPanelState extends State<_VideoSettingsPanel> {
       builder: (context, scrollController) {
         return Container(
           decoration: BoxDecoration(
-            color: Colors.grey[900],
+            color: Colors.black.withOpacity(0.95),
             borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.1),
+              width: 1,
+            ),
           ),
           child: Column(
             children: [

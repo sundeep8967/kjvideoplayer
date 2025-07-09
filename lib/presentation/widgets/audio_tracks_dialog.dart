@@ -121,6 +121,14 @@ class _AudioTracksListState extends State<_AudioTracksList> {
   @override
   Widget build(BuildContext context) {
     return Container(
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.95),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.1),
+          width: 1,
+        ),
+      ),
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.7,
       ),
@@ -133,25 +141,42 @@ class _AudioTracksListState extends State<_AudioTracksList> {
             height: 4,
             margin: EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.grey[300],
+              color: Colors.grey[400],
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           
-          // Title
-          Padding(
+          // Header
+          Container(
             padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: Colors.white24),
+              ),
+            ),
             child: Row(
               children: [
-                Text(
-                  widget.title,
-                  style: Theme.of(context).textTheme.titleLarge,
+                Icon(Icons.music_note, color: Colors.white),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    widget.title,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                Spacer(),
                 IconButton(
                   onPressed: () => _refreshTracks(),
-                  icon: Icon(Icons.refresh),
+                  icon: Icon(Icons.refresh, color: Colors.white),
                   tooltip: 'Refresh tracks',
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: Icon(Icons.close, color: Colors.white),
                 ),
               ],
             ),
