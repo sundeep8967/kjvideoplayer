@@ -289,6 +289,12 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         _isPlaying = isPlaying;
         debugPrint('[_Media3PlayerWidgetState] setState: _isPlaying set to $isPlaying');
       });
+      
+      // Ensure wake lock is active when video is playing
+      if (isPlaying) {
+        _enableWakeLock();
+        debugPrint('[WAKE_LOCK] Video started playing - wake lock reinforced');
+      }
     });
     
     _bufferingSubscription = _controller!.onBufferingChanged.listen((isBuffering) {
@@ -1223,7 +1229,20 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
           // Combined gesture detection overlay
           Positioned.fill(
             child: GestureDetector(
-              onTap: _toggleControls,
+              onTap: () {
+                debugPrint('[_Media3PlayerWidgetState] Screen tapped');
+                // Toggle controls visibility
+                setState(() {
+                  _showControls = !_showControls;
+                });
+                if (_showControls) {
+                  _controlsAnimationController.forward();
+                  _startControlsTimer();
+                } else {
+                  _controlsAnimationController.reverse();
+                  _controlsTimer?.cancel();
+                }
+              },
               onDoubleTap: _togglePlayPause,
               onScaleStart: _onCombinedScaleStart,
               onScaleUpdate: _onCombinedScaleUpdate,
@@ -1301,7 +1320,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 ),
               ),
             
-            // Custom video player controls
+            // Custom video player controls with tap to toggle
             AnimatedBuilder(
               animation: _controlsOpacity,
               builder: (context, child) {
@@ -1405,25 +1424,79 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         ),
         child: Row(
           children: [
-            _buildPureIconButton(
-              icon: Icons.arrow_back_ios_new,
-              onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
-              tooltip: 'Back',
-            ),
-            const SizedBox(width: 16),
+            // Left section with back arrow and title
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    widget.videoTitle ?? 'Video',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
+                  _buildPureIconButton(
+                    icon: Icons.arrow_back_ios_new,
+                    onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
+                    tooltip: 'Back',
+                    iconSize: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      widget.videoTitle ?? 'Video',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.5,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            
+            // Center section with speed and rotate controls
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _showSpeedMenu = !_showSpeedMenu;
+                        _showVolumeSlider = false;
+                      });
+                      _resetControlsTimer();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _showSpeedMenu 
+                          ? const Color(0xFF007AFF).withOpacity(0.2)
+                          : Colors.white.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${_currentSpeed}x',
+                        style: TextStyle(
+                          color: _showSpeedMenu ? const Color(0xFF007AFF) : Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  _buildPureIconButton(
+                    icon: Icons.screen_rotation_outlined,
+                    onPressed: () {
+                      // Toggle between landscape orientations
+                      SystemChrome.setPreferredOrientations([
+                        DeviceOrientation.landscapeLeft,
+                        DeviceOrientation.landscapeRight,
+                        DeviceOrientation.portraitUp,
+                        DeviceOrientation.portraitDown,
+                      ]);
+                      _resetControlsTimer();
+                    },
+                    tooltip: 'Rotate Screen',
+                    iconSize: 20,
                   ),
                 ],
               ),
@@ -1554,79 +1627,94 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             
             const SizedBox(height: 20),
             
-            // Control buttons row with better spacing
+            // Control buttons row with playback controls in center
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildBottomControlButton(
-                  icon: Icons.replay_10_rounded,
-                  onPressed: _seekBackward,
-                  tooltip: 'Rewind 10s',
-                ),
+                // Left side - empty space for balance
+                const SizedBox(width: 44),
                 
-                _buildBottomControlButton(
-                  icon: _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  onPressed: _togglePlayPause,
-                  tooltip: _isPlaying ? 'Pause' : 'Play',
-                  isActive: _isPlaying,
-                ),
-                
-                _buildBottomControlButton(
-                  icon: Icons.forward_10_rounded,
-                  onPressed: _seekForward,
-                  tooltip: 'Forward 10s',
-                ),
-                
-                _buildBottomControlButton(
-                  icon: Icons.speed,
-                  onPressed: () {
-                    setState(() {
-                      _showSpeedMenu = !_showSpeedMenu;
-                      _showVolumeSlider = false;
-                    });
-                    _resetControlsTimer();
-                  },
-                  tooltip: 'Speed: ${_currentSpeed}x',
-                  isActive: _showSpeedMenu,
-                  customChild: Text(
-                    '${_currentSpeed}x',
-                    style: TextStyle(
-                      color: _showSpeedMenu ? const Color(0xFF007AFF) : Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+                // Center playback controls grouped together
+                Row(
+                  children: [
+                    _buildBottomControlButton(
+                      icon: Icons.keyboard_double_arrow_left,
+                      onPressed: () {
+                        // Fast backward - seek 30 seconds
+                        final newPosition = _position - const Duration(seconds: 30);
+                        _controller?.seekTo(newPosition.isNegative ? Duration.zero : newPosition);
+                        _resetControlsTimer();
+                      },
+                      tooltip: 'Rewind 30s',
                     ),
-                  ),
+                    const SizedBox(width: 16),
+                    _buildBottomControlButton(
+                      icon: Icons.keyboard_arrow_left,
+                      onPressed: _seekBackward,
+                      tooltip: 'Rewind 10s',
+                    ),
+                    const SizedBox(width: 20),
+                    _buildBottomControlButton(
+                      icon: _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      onPressed: _togglePlayPause,
+                      tooltip: _isPlaying ? 'Pause' : 'Play',
+                      isActive: _isPlaying,
+                    ),
+                    const SizedBox(width: 20),
+                    _buildBottomControlButton(
+                      icon: Icons.keyboard_arrow_right,
+                      onPressed: _seekForward,
+                      tooltip: 'Forward 10s',
+                    ),
+                    const SizedBox(width: 16),
+                    _buildBottomControlButton(
+                      icon: Icons.keyboard_double_arrow_right,
+                      onPressed: () {
+                        // Fast forward - seek 30 seconds
+                        final newPosition = _position + const Duration(seconds: 30);
+                        final maxPosition = _duration.inMilliseconds > 0 ? _duration : newPosition;
+                        _controller?.seekTo(newPosition > maxPosition ? maxPosition : newPosition);
+                        _resetControlsTimer();
+                      },
+                      tooltip: 'Forward 30s',
+                    ),
+                  ],
                 ),
                 
-                _buildBottomControlButton(
-                  icon: _currentVolume > 0.5 ? Icons.volume_up_rounded :
-                        _currentVolume > 0 ? Icons.volume_down_rounded : Icons.volume_off_rounded,
-                  onPressed: () {
-                    setState(() {
-                      _showVolumeSlider = !_showVolumeSlider;
-                      _showSpeedMenu = false;
-                    });
-                    _resetControlsTimer();
-                  },
-                  tooltip: 'Volume',
-                  isActive: _showVolumeSlider,
+                // Right side controls with volume and zoom
+                Row(
+                  children: [
+                    _buildBottomControlButton(
+                      icon: _currentVolume > 0.5 ? Icons.volume_up_rounded :
+                            _currentVolume > 0 ? Icons.volume_down_rounded : Icons.volume_off_rounded,
+                      onPressed: () {
+                        setState(() {
+                          _showVolumeSlider = !_showVolumeSlider;
+                          _showSpeedMenu = false;
+                        });
+                        _resetControlsTimer();
+                      },
+                      tooltip: 'Volume',
+                      isActive: _showVolumeSlider,
+                    ),
+                    const SizedBox(width: 16),
+                    _buildBottomControlButton(
+                      icon: _currentZoomMode == ZoomMode.fit ? Icons.fit_screen_rounded
+                          : _currentZoomMode == ZoomMode.stretch ? Icons.aspect_ratio_rounded
+                          : _currentZoomMode == ZoomMode.zoomToFill ? Icons.crop_rounded
+                          : Icons.zoom_in_rounded,
+                      onPressed: _cycleZoomMode,
+                      tooltip: 'Zoom: ${_currentZoomMode.toString().split('.').last}',
+                    ),
+                    const SizedBox(width: 16),
+                    if (_isZoomed)
+                      _buildBottomControlButton(
+                        icon: Icons.zoom_out_map_rounded,
+                        onPressed: _resetZoom,
+                        tooltip: 'Reset Zoom',
+                      ),
+                  ],
                 ),
-                
-                _buildBottomControlButton(
-                  icon: _currentZoomMode == ZoomMode.fit ? Icons.fit_screen_rounded
-                      : _currentZoomMode == ZoomMode.stretch ? Icons.aspect_ratio_rounded
-                      : _currentZoomMode == ZoomMode.zoomToFill ? Icons.crop_rounded
-                      : Icons.zoom_in_rounded,
-                  onPressed: _cycleZoomMode,
-                  tooltip: 'Zoom: ${_currentZoomMode.toString().split('.').last}',
-                ),
-                
-                if (_isZoomed)
-                  _buildBottomControlButton(
-                    icon: Icons.zoom_out_map_rounded,
-                    onPressed: _resetZoom,
-                    tooltip: 'Reset Zoom',
-                  ),
               ],
             ),
           ],
@@ -2443,18 +2531,27 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   // Wake lock methods to keep screen on during video playback
   Future<void> _enableWakeLock() async {
     try {
+      // Enable immersive mode and keep screen on
       await SystemChrome.setEnabledSystemUIMode(
         SystemUiMode.immersiveSticky,
         overlays: [],
       );
-      // Keep screen on during video playback
+      
+      // Additional wake lock - prevent screen from sleeping
       SystemChrome.setSystemUIOverlayStyle(
         const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           systemNavigationBarColor: Colors.transparent,
         ),
       );
-      debugPrint('[WAKE_LOCK] Screen wake lock enabled');
+      
+      // Force keep screen awake during video playback
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+      
+      debugPrint('[WAKE_LOCK] Screen wake lock enabled - screen will stay on during video playback');
     } catch (e) {
       debugPrint('[WAKE_LOCK] Failed to enable wake lock: $e');
     }
@@ -2513,13 +2610,24 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     required String tooltip,
     bool isActive = false,
     Widget? customChild,
+    double? iconSize,
   }) {
+    // Determine if this is a playback control (arrows and play/pause)
+    final isPlaybackControl = icon == Icons.keyboard_double_arrow_left ||
+                             icon == Icons.keyboard_arrow_left ||
+                             icon == Icons.pause_rounded ||
+                             icon == Icons.play_arrow_rounded ||
+                             icon == Icons.keyboard_arrow_right ||
+                             icon == Icons.keyboard_double_arrow_right;
+    
+    final size = iconSize ?? (isPlaybackControl ? 32 : 24);
+    
     return GestureDetector(
       onTap: onPressed,
       child: customChild ?? Icon(
         icon,
         color: isActive ? const Color(0xFF007AFF) : Colors.white,
-        size: 24,
+        size: size,
       ),
     );
   }
@@ -2532,19 +2640,12 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _formatDuration(_position, showPlaceholder: true),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
+              Text(
+                _formatDuration(_position, showPlaceholder: true),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               Expanded(
@@ -2598,19 +2699,12 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                   ),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _formatDuration(_duration, showPlaceholder: true),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
+              Text(
+                _formatDuration(_duration, showPlaceholder: true),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ],
