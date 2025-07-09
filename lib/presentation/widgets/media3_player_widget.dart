@@ -1240,7 +1240,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             if (!_isInitialized)
               const Center(
                 child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF007AFF)),
                 ),
               ),
             
@@ -1248,7 +1248,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             if (_showBufferingIndicator && _isInitialized)
               const Center(
                 child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF007AFF)),
                 ),
               ),
             
@@ -1266,7 +1266,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                     children: [
                       const Icon(
                         Icons.error_outline,
-                        color: Colors.red,
+                        color: Color(0xFF007AFF),
                         size: 48,
                       ),
                       const SizedBox(height: 16),
@@ -1386,27 +1386,31 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       right: 0,
       child: Container(
         padding: EdgeInsets.only(
-          top: MediaQuery.of(context).padding.top,
-          left: 16,
-          right: 16,
-          bottom: 16,
+          top: MediaQuery.of(context).padding.top + 8,
+          left: 20,
+          right: 20,
+          bottom: 20,
         ),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Colors.black.withOpacity(0.8),
+              Colors.black.withOpacity(0.7),
+              Colors.black.withOpacity(0.3),
               Colors.transparent,
             ],
+            stops: const [0.0, 0.7, 1.0],
           ),
         ),
         child: Row(
           children: [
-            IconButton(
+            _buildPureIconButton(
+              icon: Icons.arrow_back_ios_new,
               onPressed: widget.onBack ?? () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
+              tooltip: 'Back',
             ),
+            const SizedBox(width: 16),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1415,74 +1419,71 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                     widget.videoTitle ?? 'Video',
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  if (_performanceData.isNotEmpty)
-                    Text(
-                      'Buffer: $_bufferedPercentage%',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
-                        fontSize: 12,
-                      ),
-                    ),
                 ],
               ),
             ),
-            // Subtitle control
-            IconButton(
-              onPressed: () {
-                if (_controller != null) {
-                  SubtitleTracksDialog.show(context, _controller!);
-                }
-                _resetControlsTimer();
-              },
-              icon: const Icon(Icons.subtitles, color: Colors.white, size: 24),
-              tooltip: 'Subtitles',
-            ),
-            // Music button - Show available audio tracks
-            IconButton(
-              onPressed: () {
-                _showAudioTracksBottomSheet();
-                _resetControlsTimer();
-              },
-              icon: const Icon(Icons.music_note, color: Colors.white, size: 24),
-              tooltip: 'Audio Tracks',
-            ),
-            // Settings button
-            IconButton(
-              onPressed: () {
-                VideoSettingsDialog.show(
-                  context,
-                  _controller,
-                  currentSpeed: _currentSpeed,
-                  currentVolume: _currentVolume,
-                  isMuted: _isMuted,
-                  onSpeedChanged: (speed) {
-                    setState(() {
-                      _currentSpeed = speed;
-                    });
-                    _controller?.setPlaybackSpeed(speed);
+            const SizedBox(width: 12),
+            Row(
+              children: [
+                _buildPureIconButton(
+                  icon: Icons.closed_caption_outlined,
+                  onPressed: () {
+                    if (_controller != null) {
+                      SubtitleTracksDialog.show(context, _controller!);
+                    }
+                    _resetControlsTimer();
                   },
-                  onVolumeChanged: (volume) {
-                    setState(() {
-                      _currentVolume = volume;
-                    });
-                    _controller?.setVolume(volume);
+                  tooltip: 'Subtitles',
+                ),
+                const SizedBox(width: 16),
+                _buildPureIconButton(
+                  icon: Icons.music_note_outlined,
+                  onPressed: () {
+                    _showAudioTracksBottomSheet();
+                    _resetControlsTimer();
                   },
-                  onMuteChanged: (muted) {
-                    setState(() {
-                      _isMuted = muted;
-                    });
-                    _controller?.setVolume(muted ? 0.0 : _currentVolume);
+                  tooltip: 'Audio Tracks',
+                ),
+                const SizedBox(width: 16),
+                _buildPureIconButton(
+                  icon: Icons.tune,
+                  onPressed: () {
+                    VideoSettingsDialog.show(
+                      context,
+                      _controller,
+                      currentSpeed: _currentSpeed,
+                      currentVolume: _currentVolume,
+                      isMuted: _isMuted,
+                      onSpeedChanged: (speed) {
+                        setState(() {
+                          _currentSpeed = speed;
+                        });
+                        _controller?.setPlaybackSpeed(speed);
+                      },
+                      onVolumeChanged: (volume) {
+                        setState(() {
+                          _currentVolume = volume;
+                        });
+                        _controller?.setVolume(volume);
+                      },
+                      onMuteChanged: (muted) {
+                        setState(() {
+                          _isMuted = muted;
+                        });
+                        _controller?.setVolume(muted ? 0.0 : _currentVolume);
+                      },
+                    );
+                    _resetControlsTimer();
                   },
-                );
-                _resetControlsTimer();
-              },
-              icon: const Icon(Icons.settings, color: Colors.white, size: 24),
-              tooltip: 'Settings',
+                  tooltip: 'Settings',
+                ),
+              ],
             ),
           ],
         ),
@@ -1496,43 +1497,30 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           // Seek backward
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              onPressed: _seekBackward,
-              icon: const Icon(Icons.replay_10, color: Colors.white, size: 32),
-            ),
+          _buildCenterControlButton(
+            icon: Icons.replay_10,
+            onPressed: _seekBackward,
+            size: 56,
+            iconSize: 28,
+            isSecondary: true,
           ),
           
-          // Play/Pause
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              onPressed: _togglePlayPause,
-              icon: Icon(
-                _isPlaying ? Icons.pause : Icons.play_arrow,
-                color: Colors.white,
-                size: 48,
-              ),
-            ),
+          // Play/Pause - Main button
+          _buildCenterControlButton(
+            icon: _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            onPressed: _togglePlayPause,
+            size: 72,
+            iconSize: 40,
+            isSecondary: false,
           ),
           
           // Seek forward
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              onPressed: _seekForward,
-              icon: const Icon(Icons.forward_10, color: Colors.white, size: 32),
-            ),
+          _buildCenterControlButton(
+            icon: Icons.forward_10,
+            onPressed: _seekForward,
+            size: 56,
+            iconSize: 28,
+            isSecondary: true,
           ),
         ],
       ),
@@ -1545,113 +1533,52 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       left: 0,
       right: 0,
       child: Container(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.bottomCenter,
             end: Alignment.topCenter,
             colors: [
               Colors.black.withOpacity(0.8),
+              Colors.black.withOpacity(0.4),
               Colors.transparent,
             ],
+            stops: const [0.0, 0.6, 1.0],
           ),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Progress bar with buffer indicator
-            Row(
-              children: [
-                Text(
-                  _formatDuration(_position, showPlaceholder: true),
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-                Expanded(
-                  child: SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      trackHeight: 4,
-                      thumbColor: _isPlaying ? Colors.blue : Colors.red,
-                      activeTrackColor: _isPlaying ? Colors.blue : Colors.red,
-                      inactiveTrackColor: Colors.white.withOpacity(0.1),
-                    ),
-                    child: Slider(
-                      value: (_duration.inMilliseconds > 0)
-                          ? ((_draggingPosition ?? _position).inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0)
-                          : 0.0,
-                      min: 0.0,
-                      max: 1.0,
-                      onChanged: (_duration.inMilliseconds > 0)
-                          ? (value) {
-                              if (!mounted) return;
-                              final newDraggingPosition = Duration(milliseconds: (value * _duration.inMilliseconds).round());
-                              debugPrint('[_Media3PlayerWidgetState] Slider onChanged: value=$value, newDraggingPosition=${newDraggingPosition.inSeconds}s');
-                              setState(() {
-                                _draggingPosition = newDraggingPosition;
-                              });
-                              _resetControlsTimer();
-                            }
-                          : null,
-                      onChangeEnd: (_duration.inMilliseconds > 0)
-                          ? (value) {
-                              if (!mounted) return;
-                              if (_draggingPosition != null) {
-                                final seekTo = _draggingPosition!.inMilliseconds.clamp(0, _duration.inMilliseconds);
-                                debugPrint('[_Media3PlayerWidgetState] Slider onChangeEnd: seeking to ${Duration(milliseconds: seekTo).inSeconds}s');
-                                _controller?.seekTo(Duration(milliseconds: seekTo));
-                                // UI will update via onPositionChanged stream, but can optimistically update if needed
-                                // setState(() {
-                                //   _position = Duration(milliseconds: seekTo);
-                                // });
-                              }
-                              setState(() { // Clear dragging position whether it was null or not
-                                  _draggingPosition = null;
-                              });
-                              _resetControlsTimer();
-                            }
-                          : null,
-                    ),
-                  ),
-                ),
-                Text(
-                  _formatDuration(_duration, showPlaceholder: true), // Duration should update via onPositionChanged
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
-              ],
-            ),
+            // Enhanced progress bar
+            _buildProgressBar(),
             
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             
-            // Control buttons row
+            // Control buttons row with better spacing
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                // Seek backward
-                IconButton(
+                _buildBottomControlButton(
+                  icon: Icons.replay_10_rounded,
                   onPressed: _seekBackward,
-                  icon: const Icon(Icons.replay_10, color: Colors.white, size: 24),
                   tooltip: 'Rewind 10s',
                 ),
                 
-                // Play/Pause
-                IconButton(
+                _buildBottomControlButton(
+                  icon: _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                   onPressed: _togglePlayPause,
-                  icon: Icon(
-                    _isPlaying ? Icons.pause : Icons.play_arrow,
-                    color: Colors.white,
-                    size: 28,
-                  ),
                   tooltip: _isPlaying ? 'Pause' : 'Play',
+                  isActive: _isPlaying,
                 ),
                 
-                // Seek forward
-                IconButton(
+                _buildBottomControlButton(
+                  icon: Icons.forward_10_rounded,
                   onPressed: _seekForward,
-                  icon: const Icon(Icons.forward_10, color: Colors.white, size: 24),
                   tooltip: 'Forward 10s',
                 ),
                 
-                // Speed control
-                IconButton(
+                _buildBottomControlButton(
+                  icon: Icons.speed,
                   onPressed: () {
                     setState(() {
                       _showSpeedMenu = !_showSpeedMenu;
@@ -1659,15 +1586,21 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                     });
                     _resetControlsTimer();
                   },
-                  icon: Text(
+                  tooltip: 'Speed: ${_currentSpeed}x',
+                  isActive: _showSpeedMenu,
+                  customChild: Text(
                     '${_currentSpeed}x',
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    style: TextStyle(
+                      color: _showSpeedMenu ? const Color(0xFF007AFF) : Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                  tooltip: 'Playback Speed',
                 ),
                 
-                // Volume control
-                IconButton(
+                _buildBottomControlButton(
+                  icon: _currentVolume > 0.5 ? Icons.volume_up_rounded :
+                        _currentVolume > 0 ? Icons.volume_down_rounded : Icons.volume_off_rounded,
                   onPressed: () {
                     setState(() {
                       _showVolumeSlider = !_showVolumeSlider;
@@ -1675,32 +1608,23 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                     });
                     _resetControlsTimer();
                   },
-                  icon: Icon(
-                    _currentVolume > 0.5 ? Icons.volume_up :
-                    _currentVolume > 0 ? Icons.volume_down : Icons.volume_off,
-                    color: Colors.white,
-                  ),
                   tooltip: 'Volume',
+                  isActive: _showVolumeSlider,
                 ),
                 
-                // Zoom Cycle Button
-                IconButton(
+                _buildBottomControlButton(
+                  icon: _currentZoomMode == ZoomMode.fit ? Icons.fit_screen_rounded
+                      : _currentZoomMode == ZoomMode.stretch ? Icons.aspect_ratio_rounded
+                      : _currentZoomMode == ZoomMode.zoomToFill ? Icons.crop_rounded
+                      : Icons.zoom_in_rounded,
                   onPressed: _cycleZoomMode,
-                  icon: Icon(
-                    _currentZoomMode == ZoomMode.fit ? Icons.fullscreen_exit // Or Icons.fit_screen
-                    : _currentZoomMode == ZoomMode.stretch ? Icons.aspect_ratio // Or Icons.settings_overscan
-                    : _currentZoomMode == ZoomMode.zoomToFill ? Icons.crop // Or Icons.zoom_in_map
-                    : Icons.zoom_in, // Custom zoom might show a generic zoom icon
-                    color: Colors.white,
-                  ),
-                  tooltip: 'Cycle Zoom Mode (${_currentZoomMode.toString().split('.').last})',
+                  tooltip: 'Zoom: ${_currentZoomMode.toString().split('.').last}',
                 ),
                 
-                // Zoom reset button (only show when zoomed)
                 if (_isZoomed)
-                  IconButton(
+                  _buildBottomControlButton(
+                    icon: Icons.zoom_out_map_rounded,
                     onPressed: _resetZoom,
-                    icon: const Icon(Icons.zoom_out_map, color: Colors.white),
                     tooltip: 'Reset Zoom',
                   ),
               ],
@@ -1713,16 +1637,40 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   
   Widget _buildSpeedMenu() {
     return Positioned(
-      bottom: 120,
-      right: 16,
+      bottom: 100,
+      right: 20,
       child: Container(
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.8),
-          borderRadius: BorderRadius.circular(8),
+          color: Colors.black.withOpacity(0.85),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.2),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.5),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Text(
+                'Playback Speed',
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.9),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(height: 4),
             _buildSpeedOption(0.5),
             _buildSpeedOption(0.75),
             _buildSpeedOption(1.0),
@@ -1737,18 +1685,37 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   
   Widget _buildSpeedOption(double speed) {
     final isSelected = _currentSpeed == speed;
-    return InkWell(
-      onTap: () => _changePlaybackSpeed(speed),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.red.withOpacity(0.3) : Colors.transparent,
-        ),
-        child: Text(
-          '${speed}x',
-          style: TextStyle(
-            color: isSelected ? Colors.red : Colors.white,
-            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _changePlaybackSpeed(speed),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            decoration: BoxDecoration(
+              color: isSelected 
+                ? const Color(0xFF007AFF).withOpacity(0.3)
+                : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+              border: isSelected 
+                ? Border.all(
+                    color: const Color(0xFF007AFF).withOpacity(0.5),
+                    width: 1,
+                  )
+                : null,
+            ),
+            child: Center(
+              child: Text(
+                '${speed}x',
+                style: TextStyle(
+                  color: isSelected ? const Color(0xFF007AFF) : Colors.white,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                  fontSize: 15,
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -1757,33 +1724,59 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   
   Widget _buildVolumeSlider() {
     return Positioned(
-      bottom: 120,
-      right: 16,
+      bottom: 100,
+      right: 20,
       child: Container(
-        height: 150,
-        width: 50,
+        height: 180,
+        width: 60,
+        padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.8),
-          borderRadius: BorderRadius.circular(25),
+          color: Colors.black.withOpacity(0.85),
+          borderRadius: BorderRadius.circular(30),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.2),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.5),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: Column(
           children: [
-            const SizedBox(height: 10),
-            Icon(
-              _currentVolume > 0.5 ? Icons.volume_up :
-              _currentVolume > 0 ? Icons.volume_down : Icons.volume_off,
-              color: Colors.white,
-              size: 20,
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                _currentVolume > 0.5 ? Icons.volume_up_rounded :
+                _currentVolume > 0 ? Icons.volume_down_rounded : Icons.volume_off_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
             ),
+            const SizedBox(height: 12),
             Expanded(
               child: RotatedBox(
                 quarterTurns: -1,
                 child: SliderTheme(
                   data: SliderTheme.of(context).copyWith(
-                    trackHeight: 3,
-                    thumbColor: Colors.red,
-                    activeTrackColor: Colors.red,
+                    trackHeight: 4,
+                    thumbColor: const Color(0xFF007AFF),
+                    activeTrackColor: const Color(0xFF007AFF),
                     inactiveTrackColor: Colors.white.withOpacity(0.3),
+                    thumbShape: const RoundSliderThumbShape(
+                      enabledThumbRadius: 8,
+                      elevation: 4,
+                    ),
+                    overlayShape: const RoundSliderOverlayShape(
+                      overlayRadius: 14,
+                    ),
                   ),
                   child: Slider(
                     value: _currentVolume,
@@ -1794,7 +1787,15 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
+            Text(
+              '${(_currentVolume * 100).round()}%',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),
@@ -2468,6 +2469,155 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     } catch (e) {
       debugPrint('[WAKE_LOCK] Failed to disable wake lock: $e');
     }
+  }
+
+  // Helper method to build pure icon buttons
+  Widget _buildPureIconButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required String tooltip,
+    double iconSize = 24,
+  }) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Icon(
+        icon,
+        color: Colors.white,
+        size: iconSize,
+      ),
+    );
+  }
+
+  // Helper method to build center control buttons - now pure icons
+  Widget _buildCenterControlButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required double size,
+    required double iconSize,
+    required bool isSecondary,
+  }) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Icon(
+        icon,
+        color: Colors.white,
+        size: iconSize,
+      ),
+    );
+  }
+
+  // Helper method to build bottom control buttons
+  Widget _buildBottomControlButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required String tooltip,
+    bool isActive = false,
+    Widget? customChild,
+  }) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: customChild ?? Icon(
+        icon,
+        color: isActive ? const Color(0xFF007AFF) : Colors.white,
+        size: 24,
+      ),
+    );
+  }
+
+  // Enhanced progress bar widget
+  Widget _buildProgressBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _formatDuration(_position, showPlaceholder: true),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 12),
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 6,
+                      thumbColor: const Color(0xFF007AFF),
+                      activeTrackColor: const Color(0xFF007AFF),
+                      inactiveTrackColor: Colors.white.withOpacity(0.3),
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 8,
+                        elevation: 4,
+                      ),
+                      overlayShape: const RoundSliderOverlayShape(
+                        overlayRadius: 16,
+                      ),
+                      trackShape: const RoundedRectSliderTrackShape(),
+                    ),
+                    child: Slider(
+                      value: (_duration.inMilliseconds > 0)
+                          ? ((_draggingPosition ?? _position).inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0)
+                          : 0.0,
+                      min: 0.0,
+                      max: 1.0,
+                      onChanged: (_duration.inMilliseconds > 0)
+                          ? (value) {
+                              if (!mounted) return;
+                              final newDraggingPosition = Duration(milliseconds: (value * _duration.inMilliseconds).round());
+                              setState(() {
+                                _draggingPosition = newDraggingPosition;
+                              });
+                              _resetControlsTimer();
+                            }
+                          : null,
+                      onChangeEnd: (_duration.inMilliseconds > 0)
+                          ? (value) {
+                              if (!mounted) return;
+                              if (_draggingPosition != null) {
+                                final seekTo = _draggingPosition!.inMilliseconds.clamp(0, _duration.inMilliseconds);
+                                _controller?.seekTo(Duration(milliseconds: seekTo));
+                              }
+                              setState(() {
+                                _draggingPosition = null;
+                              });
+                              _resetControlsTimer();
+                            }
+                          : null,
+                    ),
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  _formatDuration(_duration, showPlaceholder: true),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   @override
