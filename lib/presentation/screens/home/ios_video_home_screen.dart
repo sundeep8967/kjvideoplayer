@@ -443,7 +443,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
             Flexible(
               flex: 0,
               child: Container(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -508,10 +508,13 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                     ],
                   ),
                   
-                  const SizedBox(height: 20),
+                  // Last played video
+                  if (_recentFiles.isNotEmpty && !_isSearching)
+                    _buildLastPlayedVideo(),
                   
                   // Search bar (if searching)
                   if (_isSearching) ...[
+                    const SizedBox(height: 16),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
@@ -560,6 +563,8 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                       ),
                     ),
                     const SizedBox(height: 16),
+                  ] else ...[
+                    const SizedBox(height: 16),
                   ],
                   
                   // iOS-style segmented control
@@ -581,12 +586,13 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
               ),
             ),
             
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             
             // Content
             Expanded(
               child: _buildContent(),
             ),
+            
           ],
         ),
       ),
@@ -1159,6 +1165,110 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
       folders: folders,
       folderVideos: _folderVideos,
       onFolderTap: _navigateToFolder,
+    );
+  }
+
+  Widget _buildLastPlayedVideo() {
+    final recentVideos = _allVideos.where((video) => 
+      _recentFiles.contains(video.path)).toList();
+    
+    if (recentVideos.isEmpty) return const SizedBox.shrink();
+    
+    final lastVideo = recentVideos.first;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12, bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: GestureDetector(
+        onTap: () => _playVideo(lastVideo.path, lastVideo.displayName),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: iosLightGray,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              // Thumbnail
+              Container(
+                width: 60,
+                height: 40,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      VideoListThumbnail(
+                        video: lastVideo,
+                        size: 40,
+                      ),
+                      Center(
+                        child: Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.9),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.play_arrow,
+                            color: Colors.black87,
+                            size: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Video info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Continue Watching',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: iosGray,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      lastVideo.displayName,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: iosLabel,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              // Arrow
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: iosGray,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
