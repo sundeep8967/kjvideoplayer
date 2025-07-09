@@ -4,7 +4,13 @@ import 'package:flutter/services.dart';
 class SystemUIHelper {
   /// Initialize system UI with default settings
   static void initializeSystemUI() {
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: Color(0xFFFFFFFF), // White to match app background
+      systemNavigationBarIconBrightness: Brightness.dark,
+      systemNavigationBarDividerColor: Color(0xFFF2F2F7), // iOS light gray
+    ));
     SystemChrome.setEnabledSystemUIMode(
       SystemUiMode.edgeToEdge,
       overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
@@ -28,8 +34,20 @@ class SystemUIHelper {
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarColor: Colors.white,
+      systemNavigationBarColor: Color(0xFFFFFFFF), // White to match app background
       systemNavigationBarIconBrightness: Brightness.dark,
+      systemNavigationBarDividerColor: Color(0xFFF2F2F7), // iOS light gray
+    ));
+  }
+  
+  /// Set system UI to match app theme colors
+  static void setAppThemeUI() {
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: Color(0xFFFFFFFF), // White background
+      systemNavigationBarIconBrightness: Brightness.dark, // Dark icons
+      systemNavigationBarDividerColor: Color(0xFFF2F2F7), // iOS light gray divider
     ));
   }
 }

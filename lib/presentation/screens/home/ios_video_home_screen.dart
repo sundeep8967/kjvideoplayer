@@ -65,8 +65,9 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     
-    // Use system default notification bar
+    // Initialize system UI with app theme colors
     SystemUIHelper.initializeSystemUI();
+    SystemUIHelper.setAppThemeUI();
     
     _pageController = PageController(initialPage: _selectedTabIndex);
     _initializeAnimations();
@@ -519,9 +520,6 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                     ],
                   ),
                   
-                  // Last played video
-                  if (_recentFiles.isNotEmpty && !_isSearching)
-                    _buildLastPlayedVideo(),
                   
                   // Search bar (if searching)
                   if (_isSearching) ...[
@@ -616,6 +614,24 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                 ],
               ),
             ),
+            
+            // Continue Watching section at bottom
+            if (_recentFiles.isNotEmpty && !_isSearching)
+              SafeArea(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: iosSystemBackground,
+                    border: Border(
+                      top: BorderSide(
+                        color: iosLightGray,
+                        width: 0.5,
+                      ),
+                    ),
+                  ),
+                  child: _buildLastPlayedVideo(),
+                ),
+              ),
             
           ],
         ),
@@ -864,6 +880,24 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                 ),
               ),
             ),
+            
+            // Continue Watching section at bottom
+            if (_recentFiles.isNotEmpty && !_isSearching)
+              SafeArea(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: iosSystemBackground,
+                    border: Border(
+                      top: BorderSide(
+                        color: iosLightGray,
+                        width: 0.5,
+                      ),
+                    ),
+                  ),
+                  child: _buildLastPlayedVideo(),
+                ),
+              ),
           ],
         ),
       ),
