@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import '../../core/platform/media3_player_controller.dart';
+import 'subtitle_tracks_dialog.dart';
 
 // Enum for Zoom Modes
 enum ZoomMode { fit, stretch, zoomToFill, custom }
@@ -1064,10 +1065,9 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             // Subtitle control
             IconButton(
               onPressed: () {
-                setState(() {
-                  _showSettings = true; // Open the main settings panel
-                });
-                _settingsAnimationController.forward();
+                if (_controller != null) {
+                  SubtitleTracksDialog.show(context, _controller!);
+                }
                 _resetControlsTimer();
               },
               icon: const Icon(Icons.subtitles, color: Colors.white, size: 24),
