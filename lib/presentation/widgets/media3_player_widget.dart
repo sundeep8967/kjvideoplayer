@@ -91,6 +91,10 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   List<Map<String, dynamic>> _videoTracks = [];
   List<Map<String, dynamic>> _audioTracks = [];
   List<Map<String, dynamic>> _subtitleTracks = [];
+  int? _currentAudioTrackIndex; // To store the currently selected audio track index
+  
+  // Audio tracks from current video for music panel
+  List<Map<String, dynamic>> _videoAudioTracks = [];
   
   // Performance monitoring
   Map<String, dynamic> _performanceData = {};
@@ -106,15 +110,95 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   // Timer for buffering indicator delay
   Timer? _bufferingTimer;
   
+  // Timer for periodic track detection
+  Timer? _trackDetectionTimer;
+  
   @override
   void initState() {
     super.initState();
+    debugPrint('[INIT] Initializing player widget...');
     WidgetsBinding.instance.addObserver(this);
     _initializeAnimations();
     _initializePlayer();
     _startControlsTimer();
+    debugPrint('[INIT] Player widget initialization complete');
   }
   
+  Future<void> _fetchAndUpdateCurrentAudioTrackIndex() async {
+    if (_controller != null && mounted) {
+      final currentIndex = await _controller!.getSelectedAudioTrackIndex();
+      if (mounted) {
+        setState(() {
+          _currentAudioTrackIndex = currentIndex;
+          debugPrint('[_Media3PlayerWidgetState] Fetched current audio track index: $_currentAudioTrackIndex');
+        });
+      }
+    }
+  }
+
+  void _startTrackDetectionTimer() {
+    if (!_isInitialized) return;
+    
+    debugPrint('[_Media3PlayerWidgetState] Starting periodic track detection timer');
+    _trackDetectionTimer = Timer.periodic(Duration(seconds: 2), (timer) async {
+      if (!_isInitialized || _controller == null) {
+        timer.cancel();
+        return;
+      }
+      
+      try {
+        final tracks = await _controller!.getTracks();
+        final audioTracks = tracks?['audioTracks'] as List? ?? [];
+        
+        if (audioTracks.isNotEmpty) {
+          debugPrint('[_Media3PlayerWidgetState] Track detection timer: Found ${audioTracks.length} audio tracks');
+          timer.cancel(); // Stop timer once tracks are found
+          
+          // Update UI with found tracks
+          if (mounted) {
+            setState(() {
+              _audioTracks = audioTracks.cast<Map<String, dynamic>>();
+            });
+          }
+          
+          _processVideoAudioTracks();
+        } else {
+          debugPrint('[_Media3PlayerWidgetState] Track detection timer: Still waiting for audio tracks...');
+          
+          // Try to refresh tracks
+          await _controller!.refreshTracks();
+        }
+      } catch (e) {
+        debugPrint('[_Media3PlayerWidgetState] Error in track detection timer: $e');
+      }
+    });
+    
+    // Cancel timer after 30 seconds to avoid infinite polling
+    Timer(Duration(seconds: 30), () {
+      _trackDetectionTimer?.cancel();
+      debugPrint('[_Media3PlayerWidgetState] Track detection timer cancelled after 30 seconds');
+    });
+  }
+
+  void _stopTrackDetectionTimer() {
+    _trackDetectionTimer?.cancel();
+    _trackDetectionTimer = null;
+  }
+
+  /// Safely convert dynamic list to List<Map<String, dynamic>>
+  List<Map<String, dynamic>> _convertToMapList(dynamic data) {
+    if (data == null) return [];
+    if (data is! List) return [];
+    
+    return data.map((item) {
+      if (item is Map) {
+        // Convert any Map type to Map<String, dynamic>
+        return Map<String, dynamic>.from(item);
+      }
+      return <String, dynamic>{};
+    }).toList();
+  }
+
   void _initializeAnimations() {
     _controlsAnimationController = AnimationController(
       duration: const Duration(milliseconds: 300),
@@ -147,7 +231,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
 
 // Enum for Zoom Modes
 
-  void _initializePlayer([int? viewId]) {
+  void _initializePlayer([int? viewId]) async {
     debugPrint('[_Media3PlayerWidgetState] _initializePlayer called with viewId: $viewId');
     if (viewId != null) {
       _controller = Media3PlayerController(viewId: viewId);
@@ -155,6 +239,14 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       _setupEventListeners();
       _initializeSystemVolume();
       _listenToSystemVolumeChanges();
+      
+      // Add delay to ensure tracks are processed after initialization
+      await Future.delayed(const Duration(milliseconds: 500));
+      _fetchAndUpdateCurrentAudioTrackIndex();
+      _processVideoAudioTracks();
+      _startTrackDetectionTimer();
+      
+      debugPrint('[_Media3PlayerWidgetState] Player initialization complete with track processing');
     } else {
       debugPrint('[_Media3PlayerWidgetState] viewId is null, controller not initialized.');
     }
@@ -162,10 +254,10 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   
   void _setupEventListeners() {
     if (_controller == null) {
-      debugPrint('[_Media3PlayerWidgetState] _setupEventListeners: Controller is null, cannot setup listeners.');
+      debugPrint('[SETUP] _setupEventListeners: Controller is null, cannot setup listeners.');
       return;
     }
-    debugPrint('[_Media3PlayerWidgetState] _setupEventListeners: Setting up listeners...');
+    debugPrint('[SETUP] Setting up event listeners...');
     
     _playingSubscription = _controller!.onPlayingChanged.listen((isPlaying) {
       debugPrint('[_Media3PlayerWidgetState] Event: onPlayingChanged received: isPlaying=$isPlaying. Current state: _isPlaying=$_isPlaying');
@@ -274,12 +366,34 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     });
     
     _tracksSubscription = _controller!.onTracksChanged.listen((data) {
-      debugPrint('[_Media3PlayerWidgetState] Event: onTracksChanged received: video=${(data['videoTracks'] as List).length}, audio=${(data['audioTracks'] as List).length}, subtitle=${(data['subtitleTracks'] as List).length}');
+      debugPrint('[TRACKS] ===== TRACKS CHANGED EVENT =====');
+      debugPrint('[TRACKS] Video: ${(data['videoTracks'] as List).length}, Audio: ${(data['audioTracks'] as List).length}, Subtitle: ${(data['subtitleTracks'] as List).length}');
+      debugPrint('[TRACKS] Raw audio tracks data: ${data['audioTracks']}');
       if (!mounted) return;
+      
+      final newVideoTracks = _convertToMapList(data['videoTracks']);
+      final newAudioTracks = _convertToMapList(data['audioTracks']);
+      final newSubtitleTracks = _convertToMapList(data['subtitleTracks']);
+      
       setState(() {
-        _videoTracks = List<Map<String, dynamic>>.from(data['videoTracks'] ?? []);
-        _audioTracks = List<Map<String, dynamic>>.from(data['audioTracks'] ?? []);
-        _subtitleTracks = List<Map<String, dynamic>>.from(data['subtitleTracks'] ?? []);
+        _videoTracks = newVideoTracks;
+        _audioTracks = newAudioTracks;
+        _subtitleTracks = newSubtitleTracks;
+      });
+      
+      debugPrint('[TRACKS] After setState: _audioTracks.length = ${_audioTracks.length}');
+      debugPrint('[TRACKS] _audioTracks content: $_audioTracks');
+      
+      // Process tracks with a small delay to ensure state is updated
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          // When tracks change, re-fetch the current audio track index
+          _fetchAndUpdateCurrentAudioTrackIndex();
+          // Process audio tracks for the music panel
+          _processVideoAudioTracks();
+          debugPrint('[TRACKS] Track processing completed. Final audio tracks: ${_audioTracks.length}');
+          debugPrint('[TRACKS] ===== END TRACKS PROCESSING =====');
+        }
       });
     });
     debugPrint('[_Media3PlayerWidgetState] _setupEventListeners: Listeners setup complete.');
@@ -951,13 +1065,22 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             IconButton(
               onPressed: () {
                 setState(() {
-                  _showSettings = true;
+                  _showSettings = true; // Open the main settings panel
                 });
                 _settingsAnimationController.forward();
                 _resetControlsTimer();
               },
               icon: const Icon(Icons.subtitles, color: Colors.white, size: 24),
               tooltip: 'Subtitles',
+            ),
+            // Music button - Show available audio tracks
+            IconButton(
+              onPressed: () {
+                _showAudioTracksBottomSheet();
+                _resetControlsTimer();
+              },
+              icon: const Icon(Icons.music_note, color: Colors.white, size: 24),
+              tooltip: 'Audio Tracks',
             ),
             // Settings button
             IconButton(
@@ -1364,7 +1487,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                         ),
                         onTap: () async {
                           await _controller?.setAudioTrack(entry.key);
-                          setState(() {});
+                          // After setting the track, fetch and update the current index
+                          await _fetchAndUpdateCurrentAudioTrackIndex();
                         },
                       )),
                     ],
@@ -1550,6 +1674,255 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     }
   }
   
+  void _processVideoAudioTracks() {
+    debugPrint('[_Media3PlayerWidgetState] _processVideoAudioTracks called');
+    debugPrint('[_Media3PlayerWidgetState] Current _audioTracks: $_audioTracks');
+    
+    if (_audioTracks.isEmpty) {
+      debugPrint('[_Media3PlayerWidgetState] No audio tracks available');
+      setState(() {
+        _videoAudioTracks = [];
+      });
+      return;
+    }
+    
+    try {
+      if (!mounted) return;
+      
+      // Process the audio tracks for the music panel
+      final processedTracks = <Map<String, dynamic>>[];
+      
+      for (int i = 0; i < _audioTracks.length; i++) {
+        final track = _audioTracks[i];
+        processedTracks.add({
+          'index': i,
+          'name': track['name'] ?? 'Audio Track ${i + 1}',
+          'language': track['language'] ?? 'Unknown',
+          'codec': track['codec'] ?? 'Unknown',
+          'bitrate': track['bitrate'] ?? 0,
+          'sampleRate': track['sampleRate'] ?? 0,
+          'channelCount': track['channelCount'] ?? 0,
+          'isSelected': track['isSelected'] ?? (_currentAudioTrackIndex == i),
+          'isSupported': track['isSupported'] ?? true,
+          'displayName': _formatAudioTrackName(
+            track['name'] ?? '',
+            track['language'] ?? '',
+            track['bitrate'] ?? 0
+          ),
+        });
+      }
+      
+      setState(() {
+        _videoAudioTracks = processedTracks;
+      });
+      
+      debugPrint('[_Media3PlayerWidgetState] Processed ${processedTracks.length} audio tracks');
+      debugPrint('[_Media3PlayerWidgetState] _videoAudioTracks: $_videoAudioTracks');
+    } catch (e) {
+      debugPrint('[_Media3PlayerWidgetState] Error processing audio tracks: $e');
+      setState(() {
+        _videoAudioTracks = [];
+      });
+    }
+  }
+  
+  String _formatAudioTrackName(String name, String language, int bitrate) {
+    String displayName = name;
+    
+    if (language != 'Unknown' && language.isNotEmpty) {
+      displayName += ' ($language)';
+    }
+    
+    if (bitrate > 0) {
+      final bitrateKbps = (bitrate / 1000).round();
+      displayName += ' - ${bitrateKbps}kbps';
+    }
+    
+    return displayName;
+  }
+
+  void _showAudioTracksBottomSheet() {
+    // Debug: Print current state
+    debugPrint('=== AUDIO TRACKS DEBUG ===');
+    debugPrint('_audioTracks.length: ${_audioTracks.length}');
+    debugPrint('_audioTracks: $_audioTracks');
+    debugPrint('_currentAudioTrackIndex: $_currentAudioTrackIndex');
+    debugPrint('_isInitialized: $_isInitialized');
+    debugPrint('========================');
+    
+    // Ensure we have the latest tracks data
+    _processVideoAudioTracks();
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (BuildContext context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.3,
+          maxChildSize: 0.9,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Handle bar
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[400],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  // Header
+                  Flexible(
+                    flex: 0,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.music_note, color: Colors.white, size: 24),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Audio Tracks (${_audioTracks.length})',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close, color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              
+              // Audio tracks list
+              if (_videoAudioTracks.isEmpty)
+                Flexible(
+                  flex: 0,
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                      child: Text(
+                        'No audio tracks available',
+                        style: TextStyle(color: Colors.white70, fontSize: 16),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _videoAudioTracks.length,
+                    itemBuilder: (context, index) {
+                      final track = _videoAudioTracks[index];
+                      final isSelected = track['isSelected'] ?? false;
+                      final displayName = track['displayName'] ?? track['name'] ?? 'Unknown Track';
+                      final language = track['language'] ?? 'Unknown';
+                      final codec = track['codec'] ?? 'Unknown';
+                      final bitrate = track['bitrate'] ?? 0;
+                      
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: isSelected ? Colors.blue.withOpacity(0.2) : Colors.white.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: isSelected ? Border.all(color: Colors.blue, width: 2) : null,
+                        ),
+                        child: ListTile(
+                          leading: Icon(
+                            isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                            color: isSelected ? Colors.blue : Colors.white70,
+                          ),
+                          title: Text(
+                            displayName,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('Language: $language', 
+                                style: const TextStyle(color: Colors.white70),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text('Codec: $codec', 
+                                style: const TextStyle(color: Colors.white70),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (bitrate > 0) Text('Bitrate: ${bitrate} bps', 
+                                style: const TextStyle(color: Colors.white70),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                          onTap: () async {
+                            try {
+                              final trackIndex = track['index'] ?? index;
+                              debugPrint('Attempting to select track at index: $trackIndex');
+                              
+                              await _controller?.selectAudioTrack(trackIndex);
+                              await _fetchAndUpdateCurrentAudioTrackIndex();
+                              _processVideoAudioTracks();
+                              
+                              if (mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Audio track selected successfully'),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              debugPrint('Error selecting audio track: $e');
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to select audio track: $e'),
+                                    backgroundColor: Colors.red,
+                                    duration: Duration(seconds: 3),
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              
+              const SizedBox(height: 20),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -1558,6 +1931,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _controlsTimer?.cancel();
     _errorClearTimer?.cancel();
     _bufferingTimer?.cancel();
+    _stopTrackDetectionTimer();
     
     // Dispose animation controllers
     _controlsAnimationController.dispose();

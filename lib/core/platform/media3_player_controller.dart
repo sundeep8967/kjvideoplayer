@@ -335,17 +335,84 @@ class Media3PlayerController {
   }
   
   void _handleTracksChanged(Map<dynamic, dynamic> args) {
-    final videoTracks = args['videoTracks'] as List<dynamic>? ?? [];
-    final audioTracks = args['audioTracks'] as List<dynamic>? ?? [];
-    final subtitleTracks = args['subtitleTracks'] as List<dynamic>? ?? [];
+    try {
+      debugPrint('=== TRACKS UPDATE ===');
+      
+      // Safely convert the tracks data with proper type casting
+      final audioTracks = (args['audioTracks'] as List?)?.cast<Map<dynamic, dynamic>>() ?? [];
+      final videoTracks = (args['videoTracks'] as List?)?.cast<Map<dynamic, dynamic>>() ?? [];
+      final subtitleTracks = (args['subtitleTracks'] as List?)?.cast<Map<dynamic, dynamic>>() ?? [];
+      final currentIndex = args['currentAudioTrackIndex'] as int?;
+      
+      // Validate track data
+      if (audioTracks.isEmpty) {
+        debugPrint('No audio tracks available');
+        _tracksController.add({
+          'videoTracks': _convertToMapList(videoTracks),
+          'audioTracks': <Map<String, dynamic>>[],
+          'subtitleTracks': _convertToMapList(subtitleTracks),
+          'currentAudioTrackIndex': null,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        });
+        return;
+      }
+
+      // Ensure index is within bounds
+      final validatedIndex = currentIndex?.clamp(0, audioTracks.length - 1);
+      
+      debugPrint('=== TRACKS UPDATE ===');
+      debugPrint('Valid audio tracks: ${audioTracks.length}');
+      debugPrint('Current index: $validatedIndex');
+      
+      // Convert to proper format
+      final convertedAudioTracks = _convertToMapList(audioTracks);
+      final convertedVideoTracks = _convertToMapList(videoTracks);
+      final convertedSubtitleTracks = _convertToMapList(subtitleTracks);
+      
+      // Mark selected track
+      for (int i = 0; i < convertedAudioTracks.length; i++) {
+        convertedAudioTracks[i]['isSelected'] = i == validatedIndex;
+      }
+      
+      debugPrint('Track details:');
+      for (var i = 0; i < convertedAudioTracks.length; i++) {
+        final track = convertedAudioTracks[i];
+        debugPrint('[$i] ${track['name'] ?? 'Unknown'} (${track['language'] ?? 'Unknown'}) - '
+            'Selected: ${track['isSelected']}');
+      }
+
+      _tracksController.add({
+        'videoTracks': convertedVideoTracks,
+        'audioTracks': convertedAudioTracks,
+        'subtitleTracks': convertedSubtitleTracks,
+        'currentAudioTrackIndex': validatedIndex,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      });
+    } catch (e) {
+      debugPrint('Error processing tracks: $e');
+      // Send empty tracks on error to prevent UI crashes
+      _tracksController.add({
+        'videoTracks': <Map<String, dynamic>>[],
+        'audioTracks': <Map<String, dynamic>>[],
+        'subtitleTracks': <Map<String, dynamic>>[],
+        'currentAudioTrackIndex': null,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      });
+    }
+  }
+
+  /// Safely convert dynamic list to List<Map<String, dynamic>>
+  List<Map<String, dynamic>> _convertToMapList(dynamic data) {
+    if (data == null) return [];
+    if (data is! List) return [];
     
-    debugPrint('[Media3PlayerController] _handleTracksChanged: Video: ${videoTracks.length}, Audio: ${audioTracks.length}, Subtitle: ${subtitleTracks.length}');
-    _tracksController.add({
-      'videoTracks': videoTracks,
-      'audioTracks': audioTracks,
-      'subtitleTracks': subtitleTracks,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
+    return data.map((item) {
+      if (item is Map) {
+        // Convert any Map type to Map<String, dynamic>
+        return Map<String, dynamic>.from(item);
+      }
+      return <String, dynamic>{};
+    }).toList();
   }
   
   void _handleControlsVisibilityChanged(Map<dynamic, dynamic> args) {
@@ -374,13 +441,92 @@ class Media3PlayerController {
     _systemVolumeController.add(volume);
   }
   
-  /// Select audio track by index
+  /// Safe audio track selection with comprehensive validation
+  Future<void> selectAudioTrack(int index) async {
+    try {
+      debugPrint('Attempting to select audio track $index');
+      
+      // First get current tracks to validate index
+      final tracks = await getTracks();
+      final audioTracks = tracks?['audioTracks'] as List? ?? [];
+      
+      if (index < 0 || index >= audioTracks.length) {
+        throw Exception('Invalid track index: $index (available: 0-${audioTracks.length - 1})');
+      }
+      
+      await _channel.invokeMethod('setAudioTrack', {'index': index});
+      
+      // Verify the change was applied - wait longer due to staged execution in native code
+      await Future.delayed(Duration(milliseconds: 1500));
+      final updatedTracks = await getTracks();
+      final updatedIndex = updatedTracks?['currentAudioTrackIndex'] as int?;
+      
+      debugPrint('Track selection verification: expected=$index, actual=$updatedIndex');
+      
+      if (updatedIndex != index) {
+        // Try one more verification attempt before failing
+        await Future.delayed(Duration(milliseconds: 500));
+        final finalTracks = await getTracks();
+        final finalIndex = finalTracks?['currentAudioTrackIndex'] as int?;
+        
+        if (finalIndex != index) {
+          throw Exception('Track selection verification failed. Expected $index but got $finalIndex');
+        }
+      }
+      
+      debugPrint('Successfully selected audio track $index');
+    } catch (e) {
+      debugPrint('Error selecting audio track: $e');
+      _error = 'Failed to select audio track: ${e.toString()}';
+      _errorController.add(_error);
+      rethrow;
+    }
+  }
+
+  /// Select audio track by index with enhanced error handling (legacy method)
   Future<void> setAudioTrack(int index) async {
     try {
+      debugPrint('Attempting to set audio track to index $index');
+      final tracks = await getTracks();
+      final audioTracks = _convertToMapList(tracks?['audioTracks']);
+      
+      if (audioTracks.isEmpty) {
+        throw Exception('No audio tracks available');
+      }
+      
+      if (index < 0 || index >= audioTracks.length) {
+        throw Exception('Invalid audio track index: $index (available: 0-${audioTracks.length - 1})');
+      }
+      
       await _channel.invokeMethod('setAudioTrack', {'index': index});
+      debugPrint('Successfully set audio track to index $index');
+      
+      // Verify the change was applied
+      await Future.delayed(Duration(milliseconds: 300)); // Wait for change to apply
+      final newTracks = await getTracks();
+      final newAudioTracks = _convertToMapList(newTracks?['audioTracks']);
+      if (index < newAudioTracks.length && newAudioTracks[index]['isSelected'] != true) {
+        debugPrint('Warning: Track selection may not have been applied');
+      }
     } catch (e) {
-      _error = e.toString();
+      debugPrint('Error setting audio track: $e');
+      _error = 'Failed to set audio track: ${e.toString()}';
       _errorController.add(_error);
+      rethrow;
+    }
+  }
+
+  /// Get the currently selected audio track index
+  Future<int?> getSelectedAudioTrackIndex() async {
+    debugPrint('[Media3PlayerController] Invoking native getSelectedAudioTrackIndex()');
+    try {
+      final result = await _channel.invokeMethod('getSelectedAudioTrackIndex');
+      final int? index = result as int?;
+      debugPrint('[Media3PlayerController] Native getSelectedAudioTrackIndex() returned: $index');
+      return index;
+    } catch (e) {
+      debugPrint('[Media3PlayerController] Error getting selected audio track index: $e');
+      return null;
     }
   }
 
@@ -440,6 +586,114 @@ class Media3PlayerController {
     } catch (e) {
       _error = e.toString();
       _errorController.add(_error);
+    }
+  }
+
+  /// Get current tracks information manually with proper type casting
+  Future<Map<String, dynamic>?> getTracks() async {
+    try {
+      final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('getTracks');
+      if (result == null) return null;
+      
+      // Convert Map<dynamic, dynamic> to Map<String, dynamic>
+      return result.map((key, value) => MapEntry(key.toString(), value));
+    } catch (e) {
+      debugPrint('Error getting tracks: $e');
+      return null;
+    }
+  }
+
+  /// Get tracks directly from player with proper type casting
+  Future<Map<String, dynamic>?> getTracksFromPlayer() async {
+    try {
+      final result = await _channel.invokeMethod<Map<dynamic, dynamic>>('getTracksFromPlayer');
+      if (result == null) return null;
+      
+      // Convert Map<dynamic, dynamic> to Map<String, dynamic>
+      return result.map((key, value) => MapEntry(key.toString(), value));
+    } catch (e) {
+      debugPrint('Error getting tracks from player: $e');
+      return null;
+    }
+  }
+
+  /// Test all track detection methods for debugging
+  Future<Map<String, dynamic>?> testAllTrackMethods() async {
+    try {
+      final result = await _channel.invokeMethod('testAllTrackMethods');
+      return result as Map<String, dynamic>?;
+    } catch (e) {
+      debugPrint('Error testing track methods: $e');
+      return null;
+    }
+  }
+
+  /// Get current audio track index
+  Future<int?> getCurrentAudioTrackIndex() async {
+    try {
+      final tracks = await getTracks();
+      if (tracks == null || tracks['audioTracks'] == null) return null;
+      
+      final audioTracks = _convertToMapList(tracks['audioTracks']);
+      for (var i = 0; i < audioTracks.length; i++) {
+        if (audioTracks[i]['isSelected'] == true) {
+          return i;
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error getting current audio track: $e');
+      return null;
+    }
+  }
+
+  /// Manually refresh tracks
+  Future<void> refreshTracks() async {
+    try {
+      await _channel.invokeMethod('refreshTracks');
+    } catch (e) {
+      debugPrint('Error refreshing tracks: $e');
+    }
+  }
+
+  /// Check audio tracks availability and debug info
+  Future<void> checkAudioTracks() async {
+    debugPrint('Checking audio tracks...');
+    final tracks = await getTracks();
+    debugPrint('Audio tracks: ${tracks?['audioTracks']}');
+    
+    if (tracks?['audioTracks']?.isEmpty ?? true) {
+      debugPrint('No audio tracks available - possible causes:');
+      debugPrint('1. Media file has no audio');
+      debugPrint('2. Audio codec not supported');
+      debugPrint('3. Track detection timing issue');
+      debugPrint('4. Platform channel communication error');
+    }
+  }
+
+  /// Verify media file properties
+  void verifyMediaFile(String path) {
+    debugPrint('Media file properties:');
+    debugPrint('Path: $path');
+    debugPrint('Extension: ${path.split('.').last}');
+    debugPrint('File exists: ${path.isNotEmpty}');
+  }
+
+  /// Debug audio tracks for troubleshooting
+  Future<void> debugAudioTracks() async {
+    try {
+      await _channel.invokeMethod('debugAudioTracks');
+    } catch (e) {
+      debugPrint('Error debugging audio tracks: $e');
+    }
+  }
+
+  /// Debug current audio track selection
+  Future<void> debugCurrentAudioTrack() async {
+    try {
+      await _channel.invokeMethod('debugCurrentAudioTrack');
+    } catch (e) {
+      debugPrint('Error debugging current audio track: $e');
     }
   }
 

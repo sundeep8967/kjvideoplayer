@@ -437,13 +437,17 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
       backgroundColor: iosSystemBackground,
       body: SafeArea(
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             // iOS-style header
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+            Flexible(
+              flex: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                   // Title and action buttons
                   Row(
                     children: [
@@ -573,6 +577,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                     ),
                   ),
                 ],
+                ),
               ),
             ),
             

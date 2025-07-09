@@ -57,6 +57,9 @@ class Media3PlayerView(
     private val playerView: PlayerView = PlayerView(context)
     private val channel: MethodChannel = MethodChannel(messenger, "media3_player_$id")
     
+    // Track selector for advanced track detection
+    private val trackSelector: DefaultTrackSelector = DefaultTrackSelector(context)
+    
     // Media3 ExoPlayer instance
     private val exoPlayer: ExoPlayer by lazy {
         createMedia3Player(context)
@@ -68,10 +71,6 @@ class Media3PlayerView(
     private var currentPosition = 0L
     private var mediaItemIndex = 0
 
-    // Track selector reference for switching tracks
-    private val trackSelector: DefaultTrackSelector by lazy {
-        DefaultTrackSelector(context)
-    }
     
     init {
         setupPlayerView()
@@ -138,6 +137,9 @@ class Media3PlayerView(
                 .setAllowAudioMixedMimeTypeAdaptiveness(true)
                 .setAllowVideoNonSeamlessAdaptiveness(true)
                 .setTunnelingEnabled(false)
+                .setRendererDisabled(C.TRACK_TYPE_AUDIO, false) // Ensure audio renderer is enabled
+                .setPreferredTextLanguage("en")
+                .setSelectUndeterminedTextLanguage(true)
         )
 
         // Enhanced ExoPlayer with performance optimizations
@@ -161,21 +163,617 @@ class Media3PlayerView(
             }
     }
 
+    // Add this method to get tracks using TrackSelector directly
+    private fun getTracksFromTrackSelector(): Map<String, Any> {
+        val videoTracks = mutableListOf<Map<String, Any>>()
+        val audioTracks = mutableListOf<Map<String, Any>>()
+        val subtitleTracks = mutableListOf<Map<String, Any>>()
+        
+        val mappedTrackInfo = trackSelector.currentMappedTrackInfo
+        if (mappedTrackInfo == null) {
+            Log.w(TAG, "MappedTrackInfo is null, tracks not ready yet")
+            return mapOf(
+                "videoTracks" to videoTracks,
+                "audioTracks" to audioTracks,
+                "subtitleTracks" to subtitleTracks
+            )
+        }
+        
+        Log.d(TAG, "Processing ${mappedTrackInfo.rendererCount} renderers")
+        Log.d(TAG, "TrackSelector parameters: ${trackSelector.parameters}")
+        Log.d(TAG, "Renderer capabilities:")
+        for (i in 0 until mappedTrackInfo.rendererCount) {
+            Log.d(TAG, "Renderer $i (${mappedTrackInfo.getRendererType(i)}): " +
+                "supported=${mappedTrackInfo.getRendererSupport(i)}")
+        }
+        
+        for (rendererIndex in 0 until mappedTrackInfo.rendererCount) {
+            val rendererType = mappedTrackInfo.getRendererType(rendererIndex)
+            val trackGroups = mappedTrackInfo.getTrackGroups(rendererIndex)
+            
+            Log.d(TAG, "Renderer $rendererIndex: type=$rendererType, groups=${trackGroups.length}")
+            
+            when (rendererType) {
+                C.TRACK_TYPE_AUDIO -> {
+                    for (groupIndex in 0 until trackGroups.length) {
+                        val trackGroup = trackGroups[groupIndex]
+                        Log.d(TAG, "Audio group $groupIndex has ${trackGroup.length} tracks")
+                        
+                        for (trackIndex in 0 until trackGroup.length) {
+                            val format = trackGroup.getFormat(trackIndex)
+                            val isSupported = mappedTrackInfo.getTrackSupport(rendererIndex, groupIndex, trackIndex) == C.FORMAT_HANDLED
+                            
+                            val audioTrack = mapOf(
+                                "index" to trackIndex,
+                                "groupIndex" to groupIndex,
+                                "rendererIndex" to rendererIndex,
+                                "bitrate" to (format.bitrate.takeIf { it != Format.NO_VALUE } ?: 0),
+                                "sampleRate" to (format.sampleRate.takeIf { it != Format.NO_VALUE } ?: 0),
+                                "channelCount" to (format.channelCount.takeIf { it != Format.NO_VALUE } ?: 0),
+                                "codec" to (format.codecs ?: "unknown"),
+                                "mimeType" to (format.sampleMimeType ?: "unknown"),
+                                "name" to (format.label ?: "Audio Track ${audioTracks.size + 1}"),
+                                "language" to (format.language ?: "Unknown"),
+                                "isSelected" to false, // Will be updated below
+                                "isSupported" to isSupported
+                            )
+                            
+                            audioTracks.add(audioTrack)
+                            Log.d(TAG, "Added audio track: $audioTrack")
+                        }
+                    }
+                }
+                
+                C.TRACK_TYPE_VIDEO -> {
+                    for (groupIndex in 0 until trackGroups.length) {
+                        val trackGroup = trackGroups[groupIndex]
+                        
+                        for (trackIndex in 0 until trackGroup.length) {
+                            val format = trackGroup.getFormat(trackIndex)
+                            val isSupported = mappedTrackInfo.getTrackSupport(rendererIndex, groupIndex, trackIndex) == C.FORMAT_HANDLED
+                            
+                            val videoTrack = mapOf(
+                                "index" to trackIndex,
+                                "groupIndex" to groupIndex,
+                                "rendererIndex" to rendererIndex,
+                                "width" to (format.width.takeIf { it != Format.NO_VALUE } ?: 0),
+                                "height" to (format.height.takeIf { it != Format.NO_VALUE } ?: 0),
+                                "bitrate" to (format.bitrate.takeIf { it != Format.NO_VALUE } ?: 0),
+                                "frameRate" to (format.frameRate.takeIf { it != Format.NO_VALUE.toFloat() } ?: 0f),
+                                "codec" to (format.codecs ?: "unknown"),
+                                "mimeType" to (format.sampleMimeType ?: "unknown"),
+                                "name" to (format.label ?: "Video Track ${videoTracks.size + 1}"),
+                                "isSelected" to false, // Will be updated below
+                                "isSupported" to isSupported
+                            )
+                            
+                            videoTracks.add(videoTrack)
+                            Log.d(TAG, "Added video track: $videoTrack")
+                        }
+                    }
+                }
+                
+                C.TRACK_TYPE_TEXT -> {
+                    for (groupIndex in 0 until trackGroups.length) {
+                        val trackGroup = trackGroups[groupIndex]
+                        
+                        for (trackIndex in 0 until trackGroup.length) {
+                            val format = trackGroup.getFormat(trackIndex)
+                            val isSupported = mappedTrackInfo.getTrackSupport(rendererIndex, groupIndex, trackIndex) == C.FORMAT_HANDLED
+                            
+                            val subtitleTrack = mapOf(
+                                "index" to trackIndex,
+                                "groupIndex" to groupIndex,
+                                "rendererIndex" to rendererIndex,
+                                "name" to (format.label ?: "Subtitle Track ${subtitleTracks.size + 1}"),
+                                "language" to (format.language ?: "Unknown"),
+                                "mimeType" to (format.sampleMimeType ?: "unknown"),
+                                "isSelected" to false, // Will be updated below
+                                "isSupported" to isSupported
+                            )
+                            
+                            subtitleTracks.add(subtitleTrack)
+                            Log.d(TAG, "Added subtitle track: $subtitleTrack")
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Determine current audio track index from track selector
+        val currentAudioIndex = try {
+            val audioRendererIndex = (0 until mappedTrackInfo.rendererCount).firstOrNull {
+                mappedTrackInfo.getRendererType(it) == C.TRACK_TYPE_AUDIO
+            }
+            
+            if (audioRendererIndex != null) {
+                val audioTrackGroups = mappedTrackInfo.getTrackGroups(audioRendererIndex)
+                val selection = trackSelector.parameters.getSelectionOverride(
+                    audioRendererIndex,
+                    audioTrackGroups
+                )
+                
+                if (selection != null) {
+                    // Calculate global index from selection
+                    var globalIndex = 0
+                    for (groupIndex in 0 until selection.groupIndex) {
+                        globalIndex += audioTrackGroups[groupIndex].length
+                    }
+                    globalIndex += selection.tracks[0]
+                    
+                    // Mark the selected track
+                    if (globalIndex < audioTracks.size) {
+                        val selectedTrack = audioTracks[globalIndex].toMutableMap()
+                        selectedTrack["isSelected"] = true
+                        audioTracks[globalIndex] = selectedTrack
+                    }
+                    
+                    globalIndex
+                } else if (audioTracks.isNotEmpty()) {
+                    // No selection override, mark first track as selected by default
+                    val firstTrack = audioTracks[0].toMutableMap()
+                    firstTrack["isSelected"] = true
+                    audioTracks[0] = firstTrack
+                    0
+                } else {
+                    null
+                }
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error determining current audio track index: $e")
+            null
+        }
+
+        Log.d(TAG, "Current audio track index: $currentAudioIndex")
+        
+        return mapOf<String, Any>(
+            "videoTracks" to videoTracks,
+            "audioTracks" to audioTracks,
+            "subtitleTracks" to subtitleTracks,
+            "currentAudioTrackIndex" to (currentAudioIndex ?: -1)
+        )
+    }
+
+    // Add this method to check tracks directly from the player
+    private fun getTracksFromPlayer(): Map<String, List<Map<String, Any>>> {
+        val videoTracks = mutableListOf<Map<String, Any>>()
+        val audioTracks = mutableListOf<Map<String, Any>>()
+        val subtitleTracks = mutableListOf<Map<String, Any>>()
+        
+        val currentTracks = exoPlayer.currentTracks
+        Log.d(TAG, "Getting tracks directly from player: ${currentTracks.groups.size} groups")
+        
+        if (currentTracks.groups.isEmpty()) {
+            Log.w(TAG, "No track groups found in player")
+            return mapOf(
+                "videoTracks" to videoTracks,
+                "audioTracks" to audioTracks,
+                "subtitleTracks" to subtitleTracks
+            )
+        }
+        
+        for (groupIndex in 0 until currentTracks.groups.size) {
+            val trackGroup = currentTracks.groups[groupIndex]
+            Log.d(TAG, "Player track group $groupIndex has ${trackGroup.mediaTrackGroup.length} tracks")
+            
+            if (trackGroup.mediaTrackGroup.length == 0) continue
+            
+            val firstFormat = trackGroup.mediaTrackGroup.getFormat(0)
+            val mimeType = firstFormat.sampleMimeType
+            
+            Log.d(TAG, "Player group $groupIndex MIME type: $mimeType")
+            
+            when {
+                mimeType?.startsWith("video/") == true -> {
+                    for (trackIndex in 0 until trackGroup.mediaTrackGroup.length) {
+                        val format = trackGroup.mediaTrackGroup.getFormat(trackIndex)
+                        val isSupported = trackGroup.isTrackSupported(trackIndex)
+                        val isSelected = trackGroup.isTrackSelected(trackIndex)
+                        
+                        videoTracks.add(mapOf(
+                            "index" to trackIndex,
+                            "groupIndex" to groupIndex,
+                            "width" to (format.width.takeIf { it != Format.NO_VALUE } ?: 0),
+                            "height" to (format.height.takeIf { it != Format.NO_VALUE } ?: 0),
+                            "bitrate" to (format.bitrate.takeIf { it != Format.NO_VALUE } ?: 0),
+                            "frameRate" to (format.frameRate.takeIf { it != Format.NO_VALUE.toFloat() } ?: 0f),
+                            "codec" to (format.codecs ?: "unknown"),
+                            "mimeType" to (format.sampleMimeType ?: "unknown"),
+                            "name" to (format.label ?: "Video Track $trackIndex"),
+                            "isSelected" to isSelected,
+                            "isSupported" to isSupported
+                        ))
+                    }
+                }
+                
+                mimeType?.startsWith("audio/") == true -> {
+                    for (trackIndex in 0 until trackGroup.mediaTrackGroup.length) {
+                        val format = trackGroup.mediaTrackGroup.getFormat(trackIndex)
+                        val isSupported = trackGroup.isTrackSupported(trackIndex)
+                        val isSelected = trackGroup.isTrackSelected(trackIndex)
+                        
+                        audioTracks.add(mapOf(
+                            "index" to trackIndex,
+                            "groupIndex" to groupIndex,
+                            "bitrate" to (format.bitrate.takeIf { it != Format.NO_VALUE } ?: 0),
+                            "sampleRate" to (format.sampleRate.takeIf { it != Format.NO_VALUE } ?: 0),
+                            "channelCount" to (format.channelCount.takeIf { it != Format.NO_VALUE } ?: 0),
+                            "codec" to (format.codecs ?: "unknown"),
+                            "mimeType" to (format.sampleMimeType ?: "unknown"),
+                            "name" to (format.label ?: "Audio Track $trackIndex"),
+                            "language" to (format.language ?: "Unknown"),
+                            "isSelected" to isSelected,
+                            "isSupported" to isSupported
+                        ))
+                    }
+                }
+                
+                mimeType?.startsWith("text/") == true || 
+                mimeType?.contains("subtitle") == true ||
+                mimeType?.contains("vtt") == true ||
+                mimeType?.contains("ttml") == true -> {
+                    for (trackIndex in 0 until trackGroup.mediaTrackGroup.length) {
+                        val format = trackGroup.mediaTrackGroup.getFormat(trackIndex)
+                        val isSupported = trackGroup.isTrackSupported(trackIndex)
+                        val isSelected = trackGroup.isTrackSelected(trackIndex)
+                        
+                        subtitleTracks.add(mapOf(
+                            "index" to trackIndex,
+                            "groupIndex" to groupIndex,
+                            "name" to (format.label ?: "Subtitle $trackIndex"),
+                            "language" to (format.language ?: "Unknown"),
+                            "mimeType" to (format.sampleMimeType ?: "unknown"),
+                            "isSelected" to isSelected,
+                            "isSupported" to isSupported
+                        ))
+                    }
+                }
+            }
+        }
+        
+        return mapOf(
+            "videoTracks" to videoTracks,
+            "audioTracks" to audioTracks,
+            "subtitleTracks" to subtitleTracks
+        )
+    }
+
+    // Add a method to manually trigger track detection with multiple approaches
+    private fun manuallyDetectTracks() {
+        Log.d(TAG, "Manually detecting tracks...")
+        
+        // Wait a bit for tracks to be ready
+        Handler(Looper.getMainLooper()).postDelayed({
+            // Try multiple approaches
+            val tracksFromSelector = getTracksFromTrackSelector()
+            val tracksFromPlayer = getTracksFromPlayer()
+            
+            var videoTracks = tracksFromSelector["videoTracks"] as? List<Map<String, Any>> ?: emptyList()
+            var audioTracks = tracksFromSelector["audioTracks"] as? List<Map<String, Any>> ?: emptyList()
+            var subtitleTracks = tracksFromSelector["subtitleTracks"] as? List<Map<String, Any>> ?: emptyList()
+            
+            // Use player tracks if selector didn't find any
+            if (videoTracks.isEmpty()) {
+                videoTracks = tracksFromPlayer["videoTracks"] as List<Map<String, Any>>
+            }
+            if (audioTracks.isEmpty()) {
+                audioTracks = tracksFromPlayer["audioTracks"] as List<Map<String, Any>>
+            }
+            if (subtitleTracks.isEmpty()) {
+                subtitleTracks = tracksFromPlayer["subtitleTracks"] as List<Map<String, Any>>
+            }
+            
+            Log.d(TAG, "Manual detection - Video: ${videoTracks.size}, Audio: ${audioTracks.size}, Subtitle: ${subtitleTracks.size}")
+            
+            // Handle empty audio tracks case - check if audio is actually playing
+            val finalAudioTracks = if (audioTracks.isEmpty()) {
+                Log.w(TAG, "No audio tracks detected, checking if audio is actually playing")
+                val hasAudio = exoPlayer.audioFormat != null
+                Log.d(TAG, "Player audio format: ${exoPlayer.audioFormat}")
+                
+                if (hasAudio) {
+                    Log.w(TAG, "Player has audio but no tracks detected - creating default track")
+                    listOf(mapOf(
+                        "index" to 0,
+                        "groupIndex" to 0,
+                        "name" to "Default Audio",
+                        "language" to "Unknown",
+                        "codec" to (exoPlayer.audioFormat?.codecs ?: "unknown"),
+                        "mimeType" to (exoPlayer.audioFormat?.sampleMimeType ?: "unknown"),
+                        "bitrate" to (exoPlayer.audioFormat?.bitrate?.takeIf { it != Format.NO_VALUE } ?: 0),
+                        "sampleRate" to (exoPlayer.audioFormat?.sampleRate?.takeIf { it != Format.NO_VALUE } ?: 0),
+                        "channelCount" to (exoPlayer.audioFormat?.channelCount?.takeIf { it != Format.NO_VALUE } ?: 0),
+                        "isSelected" to true,
+                        "isSupported" to true
+                    ))
+                } else {
+                    audioTracks
+                }
+            } else {
+                audioTracks
+            }
+            
+            if (finalAudioTracks.isNotEmpty() || videoTracks.isNotEmpty() || subtitleTracks.isNotEmpty()) {
+                val payload = mapOf(
+                    "videoTracks" to videoTracks,
+                    "audioTracks" to finalAudioTracks,
+                    "subtitleTracks" to subtitleTracks
+                )
+                
+                Log.d(TAG, "Sending manual onTracksChanged with payload: $payload")
+                channel.invokeMethod("onTracksChanged", payload)
+            } else {
+                Log.w(TAG, "No tracks detected from any method - will retry in 2 seconds")
+                // Retry once more after additional delay
+                Handler(Looper.getMainLooper()).postDelayed({
+                    manuallyDetectTracks()
+                }, 2000)
+            }
+        }, 1000) // Wait 1 second
+    }
+
     // Track selection helpers
     private fun setAudioTrack(index: Int) {
+        try {
+            Log.d(TAG, "setAudioTrack called with index: $index")
+            
+            val mappedTrackInfo = trackSelector.currentMappedTrackInfo ?: run {
+                Log.e(TAG, "setAudioTrack: MappedTrackInfo is null")
+                return
+            }
+            
+            // Find audio renderer
+            val audioRendererIndex = (0 until mappedTrackInfo.rendererCount).firstOrNull {
+                mappedTrackInfo.getRendererType(it) == C.TRACK_TYPE_AUDIO
+            } ?: run {
+                Log.e(TAG, "setAudioTrack: No audio renderer found")
+                return
+            }
+            
+            val trackGroups = mappedTrackInfo.getTrackGroups(audioRendererIndex)
+            if (trackGroups.length == 0) {
+                Log.e(TAG, "setAudioTrack: No audio track groups available")
+                return
+            }
+            
+            // Find the correct group and track index
+            var currentTrackCount = 0
+            var targetGroupIndex = -1
+            var targetTrackIndex = -1
+            
+            for (groupIndex in 0 until trackGroups.length) {
+                val trackGroup = trackGroups[groupIndex]
+                if (index < currentTrackCount + trackGroup.length) {
+                    targetGroupIndex = groupIndex
+                    targetTrackIndex = index - currentTrackCount
+                    break
+                }
+                currentTrackCount += trackGroup.length
+            }
+            
+            if (targetGroupIndex == -1 || targetTrackIndex == -1) {
+                Log.e(TAG, "setAudioTrack: Invalid track index $index (total tracks: $currentTrackCount)")
+                return
+            }
+            
+            Log.d(TAG, "setAudioTrack: Selecting group $targetGroupIndex, track $targetTrackIndex")
+            
+            // Save current playback state
+            val wasPlaying = exoPlayer.isPlaying
+            val currentPosition = exoPlayer.currentPosition
+            
+            // Build new parameters
+            val parameters = trackSelector.buildUponParameters()
+                .setRendererDisabled(audioRendererIndex, false)
+                .setSelectionOverride(
+                    audioRendererIndex,
+                    trackGroups,
+                    DefaultTrackSelector.SelectionOverride(targetGroupIndex, targetTrackIndex)
+                )
+                .build()
+            
+            // Apply the new parameters
+            trackSelector.setParameters(parameters)
+            Log.d(TAG, "setAudioTrack: Parameters applied successfully")
+            
+            // Wait a moment for parameters to take effect before rebuilding
+            Handler(Looper.getMainLooper()).postDelayed({
+                // Completely rebuild the player to ensure track change takes effect
+                exoPlayer.stop()
+                exoPlayer.prepare()
+                
+                // Wait for player to be ready before restoring state
+                Handler(Looper.getMainLooper()).postDelayed({
+                    // Restore playback state
+                    if (wasPlaying) {
+                        exoPlayer.play()
+                    }
+                    exoPlayer.seekTo(currentPosition)
+                    
+                    // Force immediate track update after everything is ready
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        val tracks = getTracksFromTrackSelector().toMutableMap().apply {
+                            put("currentAudioTrackIndex", index)
+                        }
+                        channel.invokeMethod("onTracksChanged", tracks)
+                        Log.d(TAG, "setAudioTrack: Track change completed for index $index")
+                    }, 200)
+                }, 300)
+            }, 100)
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "setAudioTrack: Error setting audio track $index", e)
+        }
+    }
+
+    private fun forceAudioTrackRefresh(index: Int) {
+        Log.d(TAG, "forceAudioTrackRefresh: $index")
+        
+        // Save current state
+        val wasPlaying = exoPlayer.isPlaying
+        val currentPosition = exoPlayer.currentPosition
+        
+        // Create new media item with same URI but forcing reinitialization
+        val currentMediaItem = exoPlayer.currentMediaItem ?: return
+        val newMediaItem = currentMediaItem.buildUpon()
+            .setUri(currentMediaItem.localConfiguration?.uri)
+            .build()
+        
+        // Rebuild player
+        exoPlayer.setMediaItem(newMediaItem)
+        exoPlayer.prepare()
+        
+        // Restore state
+        if (wasPlaying) {
+            exoPlayer.play()
+        }
+        exoPlayer.seekTo(currentPosition)
+        
+        // Reselect the audio track
+        Handler(Looper.getMainLooper()).postDelayed({
+            setAudioTrack(index)
+        }, 300) // Small delay to ensure player is ready
+    }
+
+    private fun verifyAudioTrackSelection(index: Int): Boolean {
+        val mappedTrackInfo = trackSelector.currentMappedTrackInfo ?: return false
+        val audioRendererIndex = (0 until mappedTrackInfo.rendererCount).firstOrNull {
+            mappedTrackInfo.getRendererType(it) == C.TRACK_TYPE_AUDIO
+        } ?: return false
+        
+        val trackGroups = mappedTrackInfo.getTrackGroups(audioRendererIndex)
+        val selection = trackSelector.parameters.getSelectionOverride(
+            audioRendererIndex,
+            trackGroups
+        )
+        
+        if (selection == null) {
+            Log.d(TAG, "verifyAudioTrackSelection: No selection override exists")
+            return false
+        }
+        
+        // Calculate global index from selection
+        var globalIndex = 0
+        for (groupIndex in 0 until selection.groupIndex) {
+            globalIndex += trackGroups[groupIndex].length
+        }
+        globalIndex += selection.tracks[0]
+        
+        val verified = globalIndex == index
+        Log.d(TAG, "verifyAudioTrackSelection: Expected $index, actual $globalIndex -> $verified")
+        
+        return verified
+    }
+
+    private fun debugAudioTracks() {
         val mappedTrackInfo = trackSelector.currentMappedTrackInfo ?: return
-        val rendererIndex = (0 until mappedTrackInfo.rendererCount).firstOrNull {
+        val audioRendererIndex = (0 until mappedTrackInfo.rendererCount).firstOrNull {
             mappedTrackInfo.getRendererType(it) == C.TRACK_TYPE_AUDIO
         } ?: return
-        val group = mappedTrackInfo.getTrackGroups(rendererIndex)
-        if (index < 0 || index >= group.length) return
-        val parameters = trackSelector.buildUponParameters()
-            .setSelectionOverride(
-                rendererIndex,
-                group,
-                DefaultTrackSelector.SelectionOverride(index, 0)
-            )
-        trackSelector.setParameters(parameters)
+        
+        val trackGroups = mappedTrackInfo.getTrackGroups(audioRendererIndex)
+        Log.d(TAG, "===== AUDIO TRACK DEBUG =====")
+        Log.d(TAG, "Renderer index: $audioRendererIndex")
+        Log.d(TAG, "Track groups: ${trackGroups.length}")
+        
+        for (groupIndex in 0 until trackGroups.length) {
+            val group = trackGroups[groupIndex]
+            Log.d(TAG, "Group $groupIndex (${group.length} tracks):")
+            
+            for (trackIndex in 0 until group.length) {
+                val format = group.getFormat(trackIndex)
+                Log.d(TAG, "  Track $trackIndex: ${format.label} (${format.language})")
+            }
+        }
+        
+        val selection = trackSelector.parameters.getSelectionOverride(
+            audioRendererIndex,
+            trackGroups
+        )
+        Log.d(TAG, "Current selection: $selection")
+        Log.d(TAG, "=============================")
+    }
+
+    private fun debugCurrentAudioTrack() {
+        val mappedTrackInfo = trackSelector.currentMappedTrackInfo ?: return
+        val audioRendererIndex = (0 until mappedTrackInfo.rendererCount).firstOrNull {
+            mappedTrackInfo.getRendererType(it) == C.TRACK_TYPE_AUDIO
+        } ?: return
+        
+        val trackGroups = mappedTrackInfo.getTrackGroups(audioRendererIndex)
+        val selection = trackSelector.parameters.getSelectionOverride(
+            audioRendererIndex,
+            trackGroups
+        )
+        
+        Log.d(TAG, "===== CURRENT AUDIO TRACK =====")
+        Log.d(TAG, "Renderer index: $audioRendererIndex")
+        Log.d(TAG, "Track groups count: ${trackGroups.length}")
+        
+        if (selection != null) {
+            Log.d(TAG, "Selection override: group=${selection.groupIndex}, track=${selection.tracks[0]}")
+            
+            val selectedGroup = trackGroups[selection.groupIndex]
+            val selectedTrack = selection.tracks[0]
+            val format = selectedGroup.getFormat(selectedTrack)
+            
+            Log.d(TAG, "Selected track details:")
+            Log.d(TAG, "  Language: ${format.language}")
+            Log.d(TAG, "  Label: ${format.label}")
+            Log.d(TAG, "  Codec: ${format.codecs}")
+            Log.d(TAG, "  Sample rate: ${format.sampleRate}")
+            Log.d(TAG, "  Channel count: ${format.channelCount}")
+        } else {
+            Log.d(TAG, "No selection override - using default track")
+        }
+        Log.d(TAG, "==============================")
+    }
+
+    private fun getSelectedAudioTrackIndex(): Int? {
+        try {
+            val mappedTrackInfo = trackSelector.currentMappedTrackInfo ?: return null
+            val rendererIndex = (0 until mappedTrackInfo.rendererCount).firstOrNull {
+                mappedTrackInfo.getRendererType(it) == C.TRACK_TYPE_AUDIO
+            } ?: return null
+            
+            val trackGroups = mappedTrackInfo.getTrackGroups(rendererIndex)
+            val selection = trackSelector.parameters.getSelectionOverride(rendererIndex, trackGroups)
+            
+            if (selection != null) {
+                // Calculate the global track index from group and track indices
+                var globalIndex = 0
+                for (groupIndex in 0 until selection.groupIndex) {
+                    globalIndex += trackGroups[groupIndex].length
+                }
+                globalIndex += selection.tracks[0] // First track in the selection
+                return globalIndex
+            }
+            
+            // If no override is set, check current tracks for selected audio
+            val currentTracks = exoPlayer.currentTracks
+            var globalIndex = 0
+            
+            for (groupIndex in 0 until currentTracks.groups.size) {
+                val trackGroup = currentTracks.groups[groupIndex]
+                val firstFormat = trackGroup.mediaTrackGroup.getFormat(0)
+                
+                if (firstFormat.sampleMimeType?.startsWith("audio/") == true) {
+                    for (trackIndex in 0 until trackGroup.mediaTrackGroup.length) {
+                        if (trackGroup.isTrackSelected(trackIndex)) {
+                            return globalIndex + trackIndex
+                        }
+                    }
+                    globalIndex += trackGroup.mediaTrackGroup.length
+                }
+            }
+            
+            return null
+        } catch (e: Exception) {
+            Log.e(TAG, "getSelectedAudioTrackIndex: Error getting selected audio track", e)
+            return null
+        }
     }
 
     private fun setSubtitleTrack(index: Int) {
@@ -291,6 +889,11 @@ class Media3PlayerView(
                     isInitialized = true
                     Log.d(TAG, "Sending onInitialized")
                     channel.invokeMethod("onInitialized", null)
+                    
+                    // Add delay before track detection to ensure tracks are loaded
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        manuallyDetectTracks()
+                    }, 500) // 500ms delay
                 }
             }
             
@@ -344,51 +947,150 @@ class Media3PlayerView(
             }
             
             override fun onTracksChanged(tracks: Tracks) {
-                Log.d(TAG, "Tracks changed. Processing and sending onTracksChanged.")
-                val videoTracks = mutableListOf<Map<String, Any>>()
-                val audioTracks = mutableListOf<Map<String, Any>>()
-                val subtitleTracks = mutableListOf<Map<String, Any>>()
+                Log.d(TAG, "onTracksChanged called with ${tracks.groups.size} track groups")
+                debugAudioTracks()
                 
-                for (trackGroup in tracks.groups) {
-                    if (trackGroup.length > 0) {
-                        val trackFormat = trackGroup.getTrackFormat(0)
-                        when {
-                            trackFormat.sampleMimeType?.startsWith("video/") == true -> {
-                                videoTracks.add(mapOf(
-                                    "width" to (trackFormat.width ?: 0),
-                                    "height" to (trackFormat.height ?: 0),
-                                    "bitrate" to (trackFormat.bitrate ?: 0),
-                                    "frameRate" to (trackFormat.frameRate ?: 0f),
-                                    "codec" to (trackFormat.codecs ?: "unknown"),
-                                    "name" to (trackFormat.label ?: "Video Track")
+                // Use both approaches to ensure we get tracks
+                val tracksFromSelector = getTracksFromTrackSelector()
+                val videoTracks = tracksFromSelector["videoTracks"] as? List<Map<String, Any>> ?: emptyList()
+                val audioTracks = tracksFromSelector["audioTracks"] as? List<Map<String, Any>> ?: emptyList()
+                val subtitleTracks = tracksFromSelector["subtitleTracks"] as? List<Map<String, Any>> ?: emptyList()
+                
+                // Also try the original approach as backup
+                val videoTracksFromGroups = mutableListOf<Map<String, Any>>()
+                val audioTracksFromGroups = mutableListOf<Map<String, Any>>()
+                val subtitleTracksFromGroups = mutableListOf<Map<String, Any>>()
+                
+                for (groupIndex in 0 until tracks.groups.size) {
+                    val trackGroup = tracks.groups[groupIndex]
+                    Log.d(TAG, "Processing track group $groupIndex with ${trackGroup.mediaTrackGroup.length} tracks")
+                    
+                    if (trackGroup.mediaTrackGroup.length == 0) continue
+                    
+                    val firstFormat = trackGroup.mediaTrackGroup.getFormat(0)
+                    val mimeType = firstFormat.sampleMimeType
+                    
+                    Log.d(TAG, "Group $groupIndex MIME type: $mimeType")
+                    
+                    when {
+                        mimeType?.startsWith("video/") == true -> {
+                            for (trackIndex in 0 until trackGroup.mediaTrackGroup.length) {
+                                val format = trackGroup.mediaTrackGroup.getFormat(trackIndex)
+                                val isSupported = trackGroup.isTrackSupported(trackIndex)
+                                val isSelected = trackGroup.isTrackSelected(trackIndex)
+                                
+                                videoTracksFromGroups.add(mapOf(
+                                    "index" to trackIndex,
+                                    "groupIndex" to groupIndex,
+                                    "width" to (format.width.takeIf { it != Format.NO_VALUE } ?: 0),
+                                    "height" to (format.height.takeIf { it != Format.NO_VALUE } ?: 0),
+                                    "bitrate" to (format.bitrate.takeIf { it != Format.NO_VALUE } ?: 0),
+                                    "frameRate" to (format.frameRate.takeIf { it != Format.NO_VALUE.toFloat() } ?: 0f),
+                                    "codec" to (format.codecs ?: "unknown"),
+                                    "mimeType" to (format.sampleMimeType ?: "unknown"),
+                                    "name" to (format.label ?: "Video Track $trackIndex"),
+                                    "isSelected" to isSelected,
+                                    "isSupported" to isSupported
                                 ))
                             }
-                            trackFormat.sampleMimeType?.startsWith("audio/") == true -> {
-                                audioTracks.add(mapOf(
-                                    "bitrate" to (trackFormat.bitrate ?: 0),
-                                    "sampleRate" to (trackFormat.sampleRate ?: 0),
-                                    "channelCount" to (trackFormat.channelCount ?: 0),
-                                    "codec" to (trackFormat.codecs ?: "unknown"),
-                                    "name" to (trackFormat.label ?: "Audio Track"),
-                                    "language" to (trackFormat.language ?: "Unknown")
-                                ))
+                        }
+                        
+                        mimeType?.startsWith("audio/") == true -> {
+                            for (trackIndex in 0 until trackGroup.mediaTrackGroup.length) {
+                                val format = trackGroup.mediaTrackGroup.getFormat(trackIndex)
+                                val isSupported = trackGroup.isTrackSupported(trackIndex)
+                                val isSelected = trackGroup.isTrackSelected(trackIndex)
+                                
+                                val audioTrack = mapOf(
+                                    "index" to trackIndex,
+                                    "groupIndex" to groupIndex,
+                                    "bitrate" to (format.bitrate.takeIf { it != Format.NO_VALUE } ?: 0),
+                                    "sampleRate" to (format.sampleRate.takeIf { it != Format.NO_VALUE } ?: 0),
+                                    "channelCount" to (format.channelCount.takeIf { it != Format.NO_VALUE } ?: 0),
+                                    "codec" to (format.codecs ?: "unknown"),
+                                    "mimeType" to (format.sampleMimeType ?: "unknown"),
+                                    "name" to (format.label ?: "Audio Track $trackIndex"),
+                                    "language" to (format.language ?: "Unknown"),
+                                    "isSelected" to isSelected,
+                                    "isSupported" to isSupported
+                                )
+                                
+                                audioTracksFromGroups.add(audioTrack)
+                                Log.d(TAG, "Found audio track from groups: $audioTrack")
                             }
-                            trackFormat.sampleMimeType?.startsWith("text/") == true || trackFormat.sampleMimeType?.contains("subtitle") == true -> {
-                                subtitleTracks.add(mapOf(
-                                    "name" to (trackFormat.label ?: "Subtitle"),
-                                    "language" to (trackFormat.language ?: "Unknown")
+                        }
+                        
+                        mimeType?.startsWith("text/") == true || 
+                        mimeType?.contains("subtitle") == true ||
+                        mimeType?.contains("vtt") == true ||
+                        mimeType?.contains("ttml") == true -> {
+                            for (trackIndex in 0 until trackGroup.mediaTrackGroup.length) {
+                                val format = trackGroup.mediaTrackGroup.getFormat(trackIndex)
+                                val isSupported = trackGroup.isTrackSupported(trackIndex)
+                                val isSelected = trackGroup.isTrackSelected(trackIndex)
+                                
+                                subtitleTracksFromGroups.add(mapOf(
+                                    "index" to trackIndex,
+                                    "groupIndex" to groupIndex,
+                                    "name" to (format.label ?: "Subtitle $trackIndex"),
+                                    "language" to (format.language ?: "Unknown"),
+                                    "mimeType" to (format.sampleMimeType ?: "unknown"),
+                                    "isSelected" to isSelected,
+                                    "isSupported" to isSupported
                                 ))
                             }
                         }
                     }
                 }
                 
+                // Use the approach that found more tracks
+                val finalVideoTracks = if (videoTracks.isNotEmpty()) videoTracks else videoTracksFromGroups
+                val finalAudioTracks = if (audioTracks.isNotEmpty()) audioTracks else audioTracksFromGroups
+                val finalSubtitleTracks = if (subtitleTracks.isNotEmpty()) subtitleTracks else subtitleTracksFromGroups
+                
+                Log.d(TAG, "Final track counts - Video: ${finalVideoTracks.size}, Audio: ${finalAudioTracks.size}, Subtitle: ${finalSubtitleTracks.size}")
+                
+                // Enhanced handling for empty audio tracks
+                val enhancedAudioTracks = if (finalAudioTracks.isEmpty()) {
+                    Log.w(TAG, "No audio tracks found! This might indicate:")
+                    Log.w(TAG, "1. Audio tracks not yet loaded")
+                    Log.w(TAG, "2. Audio codec not supported")
+                    Log.w(TAG, "3. File has no audio")
+                    Log.w(TAG, "4. Track detection timing issue")
+                    
+                    // Check if audio is actually playing
+                    val hasAudio = exoPlayer.audioFormat != null
+                    Log.d(TAG, "Player audio format in onTracksChanged: ${exoPlayer.audioFormat}")
+                    
+                    if (hasAudio) {
+                        Log.w(TAG, "Player has audio but no tracks detected - creating default track")
+                        listOf(mapOf(
+                            "index" to 0,
+                            "groupIndex" to 0,
+                            "name" to "Default Audio",
+                            "language" to "Unknown",
+                            "codec" to (exoPlayer.audioFormat?.codecs ?: "unknown"),
+                            "mimeType" to (exoPlayer.audioFormat?.sampleMimeType ?: "unknown"),
+                            "bitrate" to (exoPlayer.audioFormat?.bitrate?.takeIf { it != Format.NO_VALUE } ?: 0),
+                            "sampleRate" to (exoPlayer.audioFormat?.sampleRate?.takeIf { it != Format.NO_VALUE } ?: 0),
+                            "channelCount" to (exoPlayer.audioFormat?.channelCount?.takeIf { it != Format.NO_VALUE } ?: 0),
+                            "isSelected" to true,
+                            "isSupported" to true
+                        ))
+                    } else {
+                        finalAudioTracks
+                    }
+                } else {
+                    finalAudioTracks
+                }
+                
                 val payload = mapOf(
-                    "videoTracks" to videoTracks,
-                    "audioTracks" to audioTracks,
-                    "subtitleTracks" to subtitleTracks
+                    "videoTracks" to finalVideoTracks,
+                    "audioTracks" to enhancedAudioTracks,
+                    "subtitleTracks" to finalSubtitleTracks
                 )
-                Log.d(TAG, "Sending onTracksChanged with data: $payload")
+                
+                Log.d(TAG, "Sending onTracksChanged with payload: $payload")
                 channel.invokeMethod("onTracksChanged", payload)
             }
         })
@@ -499,6 +1201,36 @@ class Media3PlayerView(
                     result.success(null)
                 }
                 
+                "getTracks" -> {
+                    val tracks = getTracksFromTrackSelector()
+                    result.success(tracks)
+                }
+                
+                "getTracksFromPlayer" -> {
+                    val tracks = getTracksFromPlayer()
+                    result.success(tracks)
+                }
+                
+                "testAllTrackMethods" -> {
+                    val selectorTracks = getTracksFromTrackSelector()
+                    val playerTracks = getTracksFromPlayer()
+                    val testResult = mapOf(
+                        "selectorTracks" to selectorTracks,
+                        "playerTracks" to playerTracks,
+                        "hasAudioFormat" to (exoPlayer.audioFormat != null),
+                        "audioFormat" to (exoPlayer.audioFormat?.toString() ?: "null"),
+                        "playerState" to exoPlayer.playbackState,
+                        "isPlaying" to exoPlayer.isPlaying
+                    )
+                    result.success(testResult)
+                }
+                
+                "refreshTracks" -> {
+                    Log.d(TAG, "Manually refreshing tracks...")
+                    manuallyDetectTracks()
+                    result.success(null)
+                }
+                
                 "dispose" -> {
                     dispose()
                     result.success(null)
@@ -510,7 +1242,31 @@ class Media3PlayerView(
                     when (call.method) {
                         "setAudioTrack" -> {
                             val index = call.argument<Int>("index") ?: 0
+                            // First try normal selection
                             setAudioTrack(index)
+                            
+                            // Then force refresh if needed - wait longer for the delayed execution
+                            Handler(Looper.getMainLooper()).postDelayed({
+                                if (!verifyAudioTrackSelection(index)) {
+                                    Log.w(TAG, "Initial selection failed, forcing refresh")
+                                    forceAudioTrackRefresh(index)
+                                } else {
+                                    Log.d(TAG, "Audio track selection verified successfully for index $index")
+                                }
+                            }, 1000) // Increased delay to account for the staged execution
+                            
+                            result.success(null)
+                        }
+                        "getSelectedAudioTrackIndex" -> {
+                            val selectedIndex = getSelectedAudioTrackIndex()
+                            result.success(selectedIndex)
+                        }
+                        "debugAudioTracks" -> {
+                            debugAudioTracks()
+                            result.success(null)
+                        }
+                        "debugCurrentAudioTrack" -> {
+                            debugCurrentAudioTrack()
                             result.success(null)
                         }
                         "setSubtitleTrack" -> {
