@@ -2,7 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+// Brightness control without external dependency
 import '../../core/platform/media3_player_controller.dart';
+import 'subtitle_tracks_dialog.dart';
+import 'video_settings_dialog.dart';
 
 // Enum for Zoom Modes
 enum ZoomMode { fit, stretch, zoomToFill, custom }
@@ -58,6 +61,18 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   Duration _duration = Duration.zero;
   String? _error;
   
+  // Brightness control state
+  double _currentBrightness = 0.5;
+  double? _originalBrightness;
+  bool _isBrightnessAdjusting = false;
+  Timer? _brightnessDebounceTimer;
+  
+  // Volume control state
+  double _currentVolume = 0.5;
+  double? _originalVolume;
+  bool _isVolumeAdjusting = false;
+  Timer? _volumeDebounceTimer;
+  
   // Temporary state for seekbar dragging
   Duration? _draggingPosition;
   
@@ -68,7 +83,6 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   bool _showSpeedMenu = false;
   bool _showVolumeSlider = false;
   double _currentSpeed = 1.0;
-  double _currentVolume = 1.0;
   bool _isMuted = false;
   int _bufferedPercentage = 0;
   
@@ -113,12 +127,18 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   // Timer for periodic track detection
   Timer? _trackDetectionTimer;
   
+  // Timer for zoom indicator auto-hide
+  Timer? _zoomIndicatorTimer;
+  bool _showZoomIndicator = false;
+  
   @override
   void initState() {
     super.initState();
     debugPrint('[INIT] Initializing player widget...');
     WidgetsBinding.instance.addObserver(this);
     _initializeAnimations();
+    _initializeBrightness();
+    _initializeVolume();
     _initializePlayer();
     _startControlsTimer();
     debugPrint('[INIT] Player widget initialization complete');
@@ -433,6 +453,200 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       _startControlsTimer();
     }
   }
+
+  // Brightness control methods
+  static const MethodChannel _brightnessChannel = MethodChannel('com.sundeep.kjvideoplayer/brightness');
+  
+  Future<void> _initializeBrightness() async {
+    try {
+      // Try to get current system brightness using custom channel
+      final currentBrightness = await _brightnessChannel.invokeMethod<double>('getBrightness');
+      if (currentBrightness != null) {
+        _currentBrightness = currentBrightness;
+        _originalBrightness = currentBrightness;
+        debugPrint('[BRIGHTNESS] Brightness control initialized with system brightness: $currentBrightness');
+      } else {
+        throw Exception('Failed to get brightness from native');
+      }
+    } catch (e) {
+      // Fallback: try to get current window brightness
+      try {
+        final windowBrightness = WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark ? 0.3 : 0.7;
+        _currentBrightness = windowBrightness;
+        _originalBrightness = windowBrightness;
+        debugPrint('[BRIGHTNESS] Using platform brightness fallback: $windowBrightness');
+      } catch (e2) {
+        // Final fallback to default
+        _currentBrightness = 0.5;
+        _originalBrightness = 0.5;
+        debugPrint('[BRIGHTNESS] Using default brightness: $e2');
+      }
+    }
+  }
+
+  // Volume control methods
+  Future<void> _initializeVolume() async {
+    // Initialize with default volume
+    _currentVolume = 0.5;
+    _originalVolume = 0.5;
+    debugPrint('[VOLUME] Volume control initialized');
+  }
+
+  void _onBrightnessStart() {
+    setState(() {
+      _isBrightnessAdjusting = true;
+    });
+    HapticFeedback.selectionClick();
+    _resetControlsTimer();
+  }
+
+  void _onBrightnessUpdate(DragUpdateDetails details) {
+    if (!_isBrightnessAdjusting) return;
+    
+    // Calculate brightness change based on vertical swipe
+    double screenHeight = MediaQuery.of(context).size.height;
+    double sensitivity = screenHeight * 0.4; // Adjust sensitivity
+    double delta = -details.delta.dy / sensitivity; // Negative because swipe up should increase brightness
+    
+    // Ignore very small movements
+    if (delta.abs() < 0.005) return;
+    
+    _adjustBrightness(delta);
+  }
+
+  void _onBrightnessEnd() {
+    setState(() {
+      _isBrightnessAdjusting = false;
+    });
+    _resetControlsTimer();
+  }
+
+  void _adjustBrightness(double delta) async {
+    try {
+      double newBrightness = (_currentBrightness + delta).clamp(0.0, 1.0);
+      
+      // Only update if there's a meaningful change
+      if ((newBrightness - _currentBrightness).abs() < 0.01) return;
+      
+      setState(() {
+        _currentBrightness = newBrightness;
+      });
+      
+      // Set actual system brightness
+      _brightnessDebounceTimer?.cancel();
+      _brightnessDebounceTimer = Timer(const Duration(milliseconds: 100), () async {
+        try {
+          // Try custom brightness channel first
+          await _brightnessChannel.invokeMethod('setBrightness', {'brightness': newBrightness});
+          debugPrint('[BRIGHTNESS] System brightness set to: $newBrightness');
+        } catch (e) {
+          debugPrint('[BRIGHTNESS] Custom brightness channel failed: $e');
+          // Fallback: Use window brightness adjustment (limited but works)
+          try {
+            // This won't change system brightness but will adjust app brightness
+            SystemChrome.setSystemUIOverlayStyle(
+              SystemUiOverlayStyle(
+                statusBarBrightness: newBrightness > 0.5 ? Brightness.light : Brightness.dark,
+                statusBarIconBrightness: newBrightness > 0.5 ? Brightness.dark : Brightness.light,
+                systemNavigationBarColor: Colors.transparent,
+                systemNavigationBarIconBrightness: newBrightness > 0.5 ? Brightness.dark : Brightness.light,
+              ),
+            );
+            debugPrint('[BRIGHTNESS] Applied UI brightness adjustment: $newBrightness');
+          } catch (e2) {
+            debugPrint('[BRIGHTNESS] All brightness methods failed: $e2');
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('[BRIGHTNESS] Error calculating brightness: $e');
+    }
+  }
+
+  IconData _getBrightnessIcon(double brightness) {
+    if (brightness < 0.3) {
+      return Icons.brightness_low;
+    } else if (brightness < 0.7) {
+      return Icons.brightness_medium;
+    } else {
+      return Icons.brightness_high;
+    }
+  }
+
+  // Volume control methods
+  void _onVolumeStart() {
+    setState(() {
+      _isVolumeAdjusting = true;
+    });
+    HapticFeedback.selectionClick();
+    _resetControlsTimer();
+  }
+
+  void _onVolumeUpdate(DragUpdateDetails details) {
+    if (!_isVolumeAdjusting) return;
+    
+    // Calculate volume change based on vertical swipe
+    double screenHeight = MediaQuery.of(context).size.height;
+    double sensitivity = screenHeight * 0.4; // Adjust sensitivity
+    double delta = -details.delta.dy / sensitivity; // Negative because swipe up should increase volume
+    
+    // Ignore very small movements
+    if (delta.abs() < 0.005) return;
+    
+    _adjustVolume(delta);
+  }
+
+  void _onVolumeEnd() {
+    setState(() {
+      _isVolumeAdjusting = false;
+    });
+    _resetControlsTimer();
+  }
+
+  void _adjustVolume(double delta) async {
+    try {
+      double newVolume = (_currentVolume + delta).clamp(0.0, 1.0);
+      
+      // Only update if there's a meaningful change
+      if ((newVolume - _currentVolume).abs() < 0.01) return;
+      
+      setState(() {
+        _currentVolume = newVolume;
+        _isMuted = newVolume <= 0.0;
+      });
+      
+      // Debounce the actual volume setting to avoid too many calls
+      _volumeDebounceTimer?.cancel();
+      _volumeDebounceTimer = Timer(const Duration(milliseconds: 100), () async {
+        try {
+          // Use the existing _changeVolume method which properly handles both system and player volume
+          _changeVolume(newVolume);
+          debugPrint('[VOLUME] Applied volume via swipe: $newVolume');
+        } catch (e) {
+          debugPrint('[VOLUME] Error setting volume: $e');
+          // Reset to original volume on error
+          setState(() {
+            _currentVolume = _originalVolume ?? 0.5;
+            _isMuted = (_originalVolume ?? 0.5) <= 0.0;
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('[VOLUME] Error calculating volume: $e');
+    }
+  }
+
+  IconData _getVolumeIcon(double volume) {
+    if (volume == 0.0) {
+      return Icons.volume_off;
+    } else if (volume < 0.3) {
+      return Icons.volume_down;
+    } else if (volume < 0.7) {
+      return Icons.volume_up;
+    } else {
+      return Icons.volume_up;
+    }
+  }
   
   void _toggleControls() {
     if (_showControls) {
@@ -616,81 +830,216 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _resetControlsTimer();
   }
   
+  // Combined gesture handlers
+  bool _isMultiFingerGesture = false;
+  bool _isSingleFingerSwipe = false;
+  Offset? _swipeStartPosition;
+  
+  void _onCombinedScaleStart(ScaleStartDetails details) {
+    // Check if it's a multi-finger gesture (pinch-to-zoom)
+    if (details.pointerCount > 1) {
+      _isMultiFingerGesture = true;
+      _isSingleFingerSwipe = false;
+      // Handle zoom start
+      _baseScaleFactor = _scaleFactor;
+    } else {
+      // Single finger - potential swipe for volume/brightness
+      _isMultiFingerGesture = false;
+      _isSingleFingerSwipe = false; // Will be determined in update
+      _swipeStartPosition = details.focalPoint;
+    }
+  }
+  
+  void _onCombinedScaleUpdate(ScaleUpdateDetails details) {
+    if (_isMultiFingerGesture && details.pointerCount > 1) {
+      // Handle zoom/pan
+      _onScaleUpdate(details);
+    } else if (!_isMultiFingerGesture && details.pointerCount == 1) {
+      // Single finger gesture - check if it's a swipe
+      if (_swipeStartPosition != null) {
+        final deltaY = (details.focalPoint.dy - _swipeStartPosition!.dy).abs();
+        final deltaX = (details.focalPoint.dx - _swipeStartPosition!.dx).abs();
+        
+        // If vertical movement is significant and greater than horizontal, treat as swipe
+        if (deltaY > 10 && deltaY > deltaX) {
+          if (!_isSingleFingerSwipe) {
+            // Start swipe gesture
+            _isSingleFingerSwipe = true;
+            final screenWidth = MediaQuery.of(context).size.width;
+            final tapX = details.focalPoint.dx;
+            
+            if (tapX < screenWidth / 2) {
+              _onBrightnessStart();
+            } else {
+              _onVolumeStart();
+            }
+          }
+          
+          // Continue swipe gesture
+          if (_isSingleFingerSwipe) {
+            final screenWidth = MediaQuery.of(context).size.width;
+            final tapX = details.focalPoint.dx;
+            
+            // Create DragUpdateDetails from ScaleUpdateDetails
+            final dragDetails = DragUpdateDetails(
+              globalPosition: details.focalPoint,
+              delta: details.focalPointDelta,
+            );
+            
+            if (tapX < screenWidth / 2) {
+              _onBrightnessUpdate(dragDetails);
+            } else {
+              _onVolumeUpdate(dragDetails);
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  void _onCombinedScaleEnd(ScaleEndDetails details) {
+    if (_isMultiFingerGesture) {
+      // Handle zoom end
+      _onScaleEnd(details);
+    } else if (_isSingleFingerSwipe) {
+      // Handle swipe end
+      if (_isBrightnessAdjusting) {
+        _onBrightnessEnd();
+      }
+      if (_isVolumeAdjusting) {
+        _onVolumeEnd();
+      }
+    }
+    
+    // Reset all flags
+    _isMultiFingerGesture = false;
+    _isSingleFingerSwipe = false;
+    _swipeStartPosition = null;
+  }
+
   // Zoom and pan gesture handlers
   void _onScaleStart(ScaleStartDetails details) {
     // Store initial scale factor when gesture starts
     _baseScaleFactor = _scaleFactor;
+    
+    // Show zoom indicator when zoom gesture starts
+    _showZoomIndicatorWithTimer();
   }
   
   void _onScaleUpdate(ScaleUpdateDetails details) {
     if (!mounted) return;
+    
+    // Keep zoom indicator visible during zoom gesture
+    if (!_showZoomIndicator) {
+      setState(() {
+        _showZoomIndicator = true;
+      });
+    }
+    
     setState(() {
       _scaleFactor = (_baseScaleFactor * details.scale).clamp(0.5, 3.0); // Allow zoom out to 50%
       
-      if (_scaleFactor != 1.0) { // Pan only if zoomed in or out
+      // Only allow panning if significantly zoomed in (not just slightly off 1.0)
+      if (_scaleFactor > 1.1) { // Only pan when zoomed in more than 10%
         final screenSize = MediaQuery.of(context).size;
-        // Use absolute value to handle both zoom in and zoom out correctly
-        final scaleDifference = (_scaleFactor - 1.0).abs();
+        final scaleDifference = _scaleFactor - 1.0;
         final maxPanX = (screenSize.width * scaleDifference) / 2;
         final maxPanY = (screenSize.height * scaleDifference) / 2;
         
-        _panOffset = Offset(
-          (_panOffset.dx + details.focalPointDelta.dx).clamp(-maxPanX, maxPanX),
-          (_panOffset.dy + details.focalPointDelta.dy).clamp(-maxPanY, maxPanY),
-        );
+        // Only apply pan delta if the movement is intentional (not just from zoom gesture)
+        // Check if this is primarily a zoom gesture vs a pan gesture
+        final zoomChange = (details.scale - 1.0).abs();
+        final panChange = details.focalPointDelta.distance;
+        
+        // If zoom change is significant compared to pan change, prioritize zoom over pan
+        if (zoomChange > 0.01 || panChange < 5.0) {
+          // This is primarily a zoom gesture, don't apply pan
+          // Keep existing pan offset but don't add new pan movement
+        } else {
+          // This is a pan gesture, apply the movement
+          _panOffset = Offset(
+            (_panOffset.dx + details.focalPointDelta.dx).clamp(-maxPanX, maxPanX),
+            (_panOffset.dy + details.focalPointDelta.dy).clamp(-maxPanY, maxPanY),
+          );
+        }
       } else {
-        // Reset pan when at 1.0 scale
+        // Reset pan when not significantly zoomed in
         _panOffset = Offset.zero;
       }
-      // If scale or pan happens, it's custom zoom
-      bool isPanned = _panOffset.dx.abs() >= 0.1 || _panOffset.dy.abs() >= 0.1; // More sensitive pan check
-      bool isScaled = (_scaleFactor - 1.0).abs() > 0.001; // Very small epsilon for scale being different from 1.0
+      
+      // Update zoom state
+      bool isPanned = _panOffset.dx.abs() >= 0.1 || _panOffset.dy.abs() >= 0.1;
+      bool isScaled = (_scaleFactor - 1.0).abs() > 0.05; // Less sensitive scale check
 
       if (isScaled || isPanned) {
-         if (_currentZoomMode != ZoomMode.custom) { // Avoid redundant setState if already custom
+         if (_currentZoomMode != ZoomMode.custom) {
             _currentZoomMode = ZoomMode.custom;
             debugPrint('[_Media3PlayerWidgetState] Pinch zoom detected, mode set to Custom. Scale: $_scaleFactor, Pan: $_panOffset');
          }
       }
-      _isZoomed = isScaled || isPanned; // Update _isZoomed based on actual state
+      _isZoomed = isScaled || isPanned;
     });
   }
   
   void _onScaleEnd(ScaleEndDetails details) {
     if (!mounted) return;
 
-    // Determine if the current state is effectively the "default" (non-zoomed, non-panned) state.
-    // Use a very small epsilon for floating point comparisons to 1.0.
-    bool isScaleEffectivelyUnity = (_scaleFactor - 1.0).abs() < 0.001;
-    bool isPanEffectivelyZero = _panOffset.dx.abs() < 0.1 && _panOffset.dy.abs() < 0.1;
+    // Use more reasonable thresholds for determining reset vs maintain zoom
+    bool isScaleNearUnity = (_scaleFactor - 1.0).abs() < 0.05; // 5% threshold instead of 0.1%
+    bool isPanMinimal = _panOffset.dx.abs() < 10.0 && _panOffset.dy.abs() < 10.0; // 10px threshold
 
-    if (isScaleEffectivelyUnity && isPanEffectivelyZero) {
-      // If ended very close to 1.0 scale and no pan, treat as reset.
-      debugPrint('[_Media3PlayerWidgetState] Scale ended at/very near 1.0 and no pan, resetting to Fit mode. Scale: $_scaleFactor');
-      _resetZoom(); // This sets mode to fit, calls native resize, and resets scale/pan.
+    if (isScaleNearUnity && isPanMinimal) {
+      // If ended close to 1.0 scale and minimal pan, reset to center
+      debugPrint('[_Media3PlayerWidgetState] Scale ended near 1.0 with minimal pan, resetting to center. Scale: $_scaleFactor');
+      _resetZoom(); // This centers the video and resets zoom
     } else {
-      // Otherwise, the current custom zoom/pan is persisted.
-      _baseScaleFactor = _scaleFactor; // This is crucial for the next gesture to be incremental.
+      // Maintain current zoom/pan state
+      _baseScaleFactor = _scaleFactor;
 
-      // Ensure _isZoomed is true if we are not in the reset state.
-      _isZoomed = true;
+      // Ensure video stays properly centered if not significantly zoomed
+      if (_scaleFactor < 1.1) {
+        // If zoom is minimal, center the video but keep the scale
+        setState(() {
+          _panOffset = Offset.zero; // Center the video
+          _isZoomed = (_scaleFactor - 1.0).abs() > 0.05;
+        });
+        debugPrint('[_Media3PlayerWidgetState] Minimal zoom, centering video. Scale: $_scaleFactor');
+      } else {
+        // Significant zoom, maintain current state
+        _isZoomed = true;
+        debugPrint('[_Media3PlayerWidgetState] Maintaining zoom state. Scale: $_scaleFactor, Pan: $_panOffset');
+      }
 
-      // If not already in custom mode (e.g., if a predefined mode was active and user just started pinching),
-      // set it to custom.
       if (_currentZoomMode != ZoomMode.custom) {
           setState(() {
               _currentZoomMode = ZoomMode.custom;
-              debugPrint('[_Media3PlayerWidgetState] Zoom gesture ended, mode is Custom. Scale: $_scaleFactor, Pan: $_panOffset');
           });
-      } else {
-        // If already in custom mode, just ensure _isZoomed is correctly reflecting the state.
-        // This might involve a setState if _isZoomed was somehow false but should be true.
-        // However, _onScaleUpdate should keep _isZoomed fairly accurate.
-        // Forcing a setState here can be redundant if _onScaleUpdate handled it.
-        // Let's rely on _onScaleUpdate for _isZoomed during the gesture.
-         debugPrint('[_Media3PlayerWidgetState] Zoom gesture ended, remaining in Custom. Scale: $_scaleFactor, Pan: $_panOffset');
       }
     }
+    
+    // Restart zoom indicator timer when gesture ends
+    _showZoomIndicatorWithTimer();
+  }
+  
+  void _showZoomIndicatorWithTimer() {
+    // Cancel existing timer
+    _zoomIndicatorTimer?.cancel();
+    
+    // Show zoom indicator
+    if (!_showZoomIndicator) {
+      setState(() {
+        _showZoomIndicator = true;
+      });
+    }
+    
+    // Hide zoom indicator after 3 seconds
+    _zoomIndicatorTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _showZoomIndicator = false;
+        });
+      }
+    });
   }
   
   void _resetZoom({bool switchToFit = true}) {
@@ -866,13 +1215,19 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
               ),
             ),
           ),
-          // Invisible overlay for tap detection
+          // Combined gesture detection overlay
           Positioned.fill(
             child: GestureDetector(
               onTap: _toggleControls,
               onDoubleTap: _togglePlayPause,
+              onScaleStart: _onCombinedScaleStart,
+              onScaleUpdate: _onCombinedScaleUpdate,
+              onScaleEnd: _onCombinedScaleEnd,
               behavior: HitTestBehavior.translucent,
-              child: const SizedBox.expand(),
+              child: Container(
+                color: Colors.transparent,
+                child: const SizedBox.expand(),
+              ),
             ),
           ),
             
@@ -977,9 +1332,18 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             // Settings panel
             if (_showSettings)
               _buildSettingsPanel(),
+
               
+          // Brightness indicator (when adjusting brightness) - Left side
+          if (_isBrightnessAdjusting)
+            _buildBrightnessIndicator(),
+
+          // Volume indicator (when adjusting volume) - Right side
+          if (_isVolumeAdjusting)
+            _buildVolumeIndicator(),
+
           // Zoom indicator (for pinch-zoom level)
-          if (_isZoomed && _currentZoomMode == ZoomMode.custom) // Only show for custom pinch zoom
+          if (_showZoomIndicator && _isZoomed && _currentZoomMode == ZoomMode.custom) // Only show during zoom gestures
             _buildZoomIndicator(),
 
           // Zoom Mode Toast
@@ -1064,10 +1428,9 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             // Subtitle control
             IconButton(
               onPressed: () {
-                setState(() {
-                  _showSettings = true; // Open the main settings panel
-                });
-                _settingsAnimationController.forward();
+                if (_controller != null) {
+                  SubtitleTracksDialog.show(context, _controller!);
+                }
                 _resetControlsTimer();
               },
               icon: const Icon(Icons.subtitles, color: Colors.white, size: 24),
@@ -1085,14 +1448,31 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             // Settings button
             IconButton(
               onPressed: () {
-                setState(() {
-                  _showSettings = !_showSettings;
-                });
-                if (_showSettings) {
-                  _settingsAnimationController.forward();
-                } else {
-                  _settingsAnimationController.reverse();
-                }
+                VideoSettingsDialog.show(
+                  context,
+                  _controller,
+                  currentSpeed: _currentSpeed,
+                  currentVolume: _currentVolume,
+                  isMuted: _isMuted,
+                  onSpeedChanged: (speed) {
+                    setState(() {
+                      _currentSpeed = speed;
+                    });
+                    _controller?.setPlaybackSpeed(speed);
+                  },
+                  onVolumeChanged: (volume) {
+                    setState(() {
+                      _currentVolume = volume;
+                    });
+                    _controller?.setVolume(volume);
+                  },
+                  onMuteChanged: (muted) {
+                    setState(() {
+                      _isMuted = muted;
+                    });
+                    _controller?.setVolume(muted ? 0.0 : _currentVolume);
+                  },
+                );
                 _resetControlsTimer();
               },
               icon: const Icon(Icons.settings, color: Colors.white, size: 24),
@@ -1239,6 +1619,31 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
+                // Seek backward
+                IconButton(
+                  onPressed: _seekBackward,
+                  icon: const Icon(Icons.replay_10, color: Colors.white, size: 24),
+                  tooltip: 'Rewind 10s',
+                ),
+                
+                // Play/Pause
+                IconButton(
+                  onPressed: _togglePlayPause,
+                  icon: Icon(
+                    _isPlaying ? Icons.pause : Icons.play_arrow,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                  tooltip: _isPlaying ? 'Pause' : 'Play',
+                ),
+                
+                // Seek forward
+                IconButton(
+                  onPressed: _seekForward,
+                  icon: const Icon(Icons.forward_10, color: Colors.white, size: 24),
+                  tooltip: 'Forward 10s',
+                ),
+                
                 // Speed control
                 IconButton(
                   onPressed: () {
@@ -1252,8 +1657,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                     '${_currentSpeed}x',
                     style: const TextStyle(color: Colors.white, fontSize: 14),
                   ),
+                  tooltip: 'Playback Speed',
                 ),
-                
                 
                 // Volume control
                 IconButton(
@@ -1269,6 +1674,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                     _currentVolume > 0 ? Icons.volume_down : Icons.volume_off,
                     color: Colors.white,
                   ),
+                  tooltip: 'Volume',
                 ),
                 
                 // Zoom Cycle Button
@@ -1626,6 +2032,110 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     );
   }
   
+  Widget _buildBrightnessIndicator() {
+    return Positioned(
+      left: MediaQuery.of(context).size.width * 0.25 - 40, // Center of left half
+      top: MediaQuery.of(context).size.height * 0.5 - 50,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.8),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _getBrightnessIcon(_currentBrightness),
+              color: Colors.white,
+              size: 28,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${(_currentBrightness * 100).round()}%',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              width: 60,
+              height: 3,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: _currentBrightness,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildVolumeIndicator() {
+    return Positioned(
+      right: MediaQuery.of(context).size.width * 0.25 - 40, // Center of right half
+      top: MediaQuery.of(context).size.height * 0.5 - 50,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.8),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _getVolumeIcon(_currentVolume),
+              color: Colors.white,
+              size: 28,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${(_currentVolume * 100).round()}%',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              width: 60,
+              height: 3,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: _currentVolume,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildZoomIndicator() {
     return Positioned(
       top: 100,
@@ -1931,6 +2441,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _controlsTimer?.cancel();
     _errorClearTimer?.cancel();
     _bufferingTimer?.cancel();
+    _zoomIndicatorTimer?.cancel();
     _stopTrackDetectionTimer();
     
     // Dispose animation controllers
