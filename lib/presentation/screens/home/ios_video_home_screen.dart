@@ -1317,16 +1317,23 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                       ),
                       Center(
                         child: Container(
-                          width: 20,
-                          height: 20,
+                          width: 24,
+                          height: 24,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.9),
+                            color: iosBlue,
                             shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: iosBlue.withOpacity(0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
                           child: const Icon(
                             Icons.play_arrow,
-                            color: Colors.black87,
-                            size: 12,
+                            color: Colors.white,
+                            size: 14,
                           ),
                         ),
                       ),
@@ -1360,6 +1367,28 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],
+                ),
+              ),
+              // Central Play Button
+              Container(
+                width: 36,
+                height: 36,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: iosBlue,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: iosBlue.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.play_arrow,
+                  color: Colors.white,
+                  size: 20,
                 ),
               ),
               // Arrow
