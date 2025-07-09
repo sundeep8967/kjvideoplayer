@@ -1120,6 +1120,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     }
 
     return TinderVideoCards(
+      key: ValueKey('tinder_videos_${_selectedTabIndex}_${videos.length}'),
       videos: videos,
       onVideoTap: (video) => _playVideo(video.path, video.displayName),
       onFavorite: _addToFavorites,

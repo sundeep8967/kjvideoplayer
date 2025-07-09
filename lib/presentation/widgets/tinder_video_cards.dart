@@ -26,47 +26,107 @@ class TinderVideoCards extends StatefulWidget {
 
 class _TinderVideoCardsState extends State<TinderVideoCards>
     with TickerProviderStateMixin {
-  late PageController _pageController;
   int _currentIndex = 0;
-  double _dragOffset = 0.0;
+  double _dragPosition = 0.0;
   bool _isDragging = false;
+  late AnimationController _animationController;
+  late Animation<Offset> _slideAnimation;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _rotationAnimation;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(viewportFraction: 0.85);
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
   }
 
   @override
   void dispose() {
-    _pageController.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
-  void _onSwipeLeft() {
-    HapticFeedbackHelper.lightImpact();
+  void _nextCard() {
     if (_currentIndex < widget.videos.length - 1) {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-      setState(() {
-        _currentIndex++;
-      });
+      HapticFeedbackHelper.lightImpact();
+      _animateToNext();
     }
   }
 
-  void _onSwipeRight() {
-    HapticFeedbackHelper.lightImpact();
+  void _previousCard() {
     if (_currentIndex > 0) {
-      _pageController.previousPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
+      HapticFeedbackHelper.lightImpact();
+      _animateToPrevious();
+    }
+  }
+
+  void _animateToNext() {
+    _slideAnimation = Tween<Offset>(
+      begin: Offset.zero,
+      end: const Offset(1.5, 0),
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+    
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.8,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+    
+    _rotationAnimation = Tween<double>(
+      begin: 0.0,
+      end: 0.3,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+
+    _animationController.forward().then((_) {
+      setState(() {
+        _currentIndex++;
+      });
+      _animationController.reset();
+    });
+  }
+
+  void _animateToPrevious() {
+    _slideAnimation = Tween<Offset>(
+      begin: Offset.zero,
+      end: const Offset(-1.5, 0),
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+    
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.8,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+    
+    _rotationAnimation = Tween<double>(
+      begin: 0.0,
+      end: -0.3,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+
+    _animationController.forward().then((_) {
       setState(() {
         _currentIndex--;
       });
-    }
+      _animationController.reset();
+    });
   }
 
   void _onSwipeUp() {
@@ -93,55 +153,24 @@ class _TinderVideoCardsState extends State<TinderVideoCards>
 
     return Column(
       children: [
-        // Swipe indicators
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildSwipeIndicator(
-                icon: Icons.arrow_back,
-                label: 'Swipe Left\nPrevious',
-                color: Colors.blue,
-              ),
-              _buildSwipeIndicator(
-                icon: Icons.favorite,
-                label: 'Swipe Up\nFavorite',
-                color: Colors.red,
-              ),
-              _buildSwipeIndicator(
-                icon: Icons.play_circle_fill,
-                label: 'Tap\nPlay Video',
-                color: Colors.green,
-              ),
-              _buildSwipeIndicator(
-                icon: Icons.share,
-                label: 'Swipe Down\nShare',
-                color: Colors.orange,
-              ),
-              _buildSwipeIndicator(
-                icon: Icons.arrow_forward,
-                label: 'Swipe Right\nNext',
-                color: Colors.blue,
-              ),
-            ],
-          ),
-        ),
         
-        // Cards stack
+        // Clean card view
         Expanded(
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              // Background cards (next 2 cards)
-              for (int i = math.min(_currentIndex + 2, widget.videos.length - 1); 
-                   i > _currentIndex; i--)
-                _buildBackgroundCard(i),
-              
-              // Current card
-              if (_currentIndex < widget.videos.length)
-                _buildCurrentCard(_currentIndex),
-            ],
+          child: PageView.builder(
+            controller: PageController(viewportFraction: 0.9),
+            onPageChanged: (index) {
+              setState(() {
+                _currentIndex = index;
+              });
+              HapticFeedbackHelper.lightImpact();
+            },
+            itemCount: widget.videos.length,
+            itemBuilder: (context, index) {
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 20),
+                child: _buildCard(widget.videos[index], index, isInteractive: true),
+              );
+            },
           ),
         ),
         
@@ -166,105 +195,22 @@ class _TinderVideoCardsState extends State<TinderVideoCards>
     );
   }
 
-  Widget _buildSwipeIndicator({
-    required IconData icon,
-    required String label,
-    required Color color,
-  }) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          icon,
-          color: color,
-          size: 20,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            color: color,
-            fontWeight: FontWeight.w500,
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
-  }
 
-  Widget _buildBackgroundCard(int index) {
-    final scale = 1.0 - (index - _currentIndex) * 0.05;
-    final offset = (index - _currentIndex) * 10.0;
-    
-    return Transform.scale(
-      scale: scale,
-      child: Transform.translate(
-        offset: Offset(0, offset),
-        child: Opacity(
-          opacity: 0.5,
-          child: _buildCard(widget.videos[index], index, isInteractive: false),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCurrentCard(int index) {
-    return GestureDetector(
-      onTap: () => widget.onVideoTap(widget.videos[index]),
-      onPanUpdate: (details) {
-        setState(() {
-          _dragOffset = details.delta.dx;
-          _isDragging = true;
-        });
-      },
-      onPanEnd: (details) {
-        setState(() {
-          _isDragging = false;
-          _dragOffset = 0.0;
-        });
-        
-        final velocity = details.velocity.pixelsPerSecond;
-        
-        // Horizontal swipes
-        if (velocity.dx.abs() > velocity.dy.abs()) {
-          if (velocity.dx > 500) {
-            _onSwipeRight();
-          } else if (velocity.dx < -500) {
-            _onSwipeLeft();
-          }
-        } 
-        // Vertical swipes
-        else {
-          if (velocity.dy < -500) {
-            _onSwipeUp();
-          } else if (velocity.dy > 500) {
-            _onSwipeDown();
-          }
-        }
-      },
-      child: Transform.translate(
-        offset: Offset(_isDragging ? _dragOffset * 0.3 : 0, 0),
-        child: Transform.rotate(
-          angle: _isDragging ? _dragOffset * 0.001 : 0,
-          child: _buildCard(widget.videos[index], index, isInteractive: true),
-        ),
-      ),
-    );
-  }
 
   Widget _buildCard(VideoModel video, int index, {required bool isInteractive}) {
-    return Container(
-      width: MediaQuery.of(context).size.width * 0.85,
-      height: MediaQuery.of(context).size.height * 0.6,
-      margin: const EdgeInsets.symmetric(horizontal: 20),
+    return GestureDetector(
+      onTap: () => widget.onVideoTap(video),
+      onLongPress: () {
+        HapticFeedbackHelper.lightImpact();
+        _showVideoActions(video);
+      },
       child: Card(
-        elevation: isInteractive ? 12 : 6,
+        elevation: 8,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -283,9 +229,9 @@ class _TinderVideoCardsState extends State<TinderVideoCards>
                     colors: [
                       Colors.transparent,
                       Colors.transparent,
-                      Colors.black.withOpacity(0.8),
+                      Colors.black.withOpacity(0.7),
                     ],
-                    stops: const [0.0, 0.5, 1.0],
+                    stops: const [0.0, 0.6, 1.0],
                   ),
                 ),
               ),
@@ -296,7 +242,7 @@ class _TinderVideoCardsState extends State<TinderVideoCards>
                 left: 0,
                 right: 0,
                 child: Container(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
@@ -305,8 +251,8 @@ class _TinderVideoCardsState extends State<TinderVideoCards>
                         video.displayName,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -315,16 +261,17 @@ class _TinderVideoCardsState extends State<TinderVideoCards>
                       Row(
                         children: [
                           Icon(
-                            Icons.access_time,
-                            color: Colors.white.withOpacity(0.8),
+                            Icons.play_circle_outline,
+                            color: Colors.white.withOpacity(0.9),
                             size: 16,
                           ),
                           const SizedBox(width: 4),
                           Text(
                             video.formattedDuration,
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.8),
-                              fontSize: 14,
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                           const Spacer(),
@@ -332,7 +279,7 @@ class _TinderVideoCardsState extends State<TinderVideoCards>
                             video.formattedSize,
                             style: TextStyle(
                               color: Colors.white.withOpacity(0.8),
-                              fontSize: 14,
+                              fontSize: 12,
                             ),
                           ),
                         ],
@@ -343,24 +290,68 @@ class _TinderVideoCardsState extends State<TinderVideoCards>
               ),
               
               // Play button overlay
-              if (isInteractive)
-                Center(
-                  child: Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.play_arrow,
-                      color: Colors.white,
-                      size: 40,
-                    ),
+              Center(
+                child: Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.9),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow,
+                    color: Colors.black87,
+                    size: 32,
                   ),
                 ),
+              ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  void _showVideoActions(VideoModel video) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.favorite_outline, color: Colors.red),
+              title: const Text('Add to Favorites'),
+              onTap: () {
+                Navigator.pop(context);
+                _onSwipeUp();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.share_outlined, color: Colors.blue),
+              title: const Text('Share Video'),
+              onTap: () {
+                Navigator.pop(context);
+                _onSwipeDown();
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
         ),
       ),
     );
