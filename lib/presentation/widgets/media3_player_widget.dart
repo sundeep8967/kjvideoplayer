@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+// Brightness control without external dependency
 import '../../core/platform/media3_player_controller.dart';
 import 'subtitle_tracks_dialog.dart';
 import 'video_settings_dialog.dart';
@@ -59,6 +60,12 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   String? _error;
+  
+  // Brightness control state
+  double _currentBrightness = 0.5;
+  double? _originalBrightness;
+  bool _isBrightnessAdjusting = false;
+  Timer? _brightnessDebounceTimer;
   
   // Temporary state for seekbar dragging
   Duration? _draggingPosition;
@@ -121,6 +128,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     debugPrint('[INIT] Initializing player widget...');
     WidgetsBinding.instance.addObserver(this);
     _initializeAnimations();
+    _initializeBrightness();
     _initializePlayer();
     _startControlsTimer();
     debugPrint('[INIT] Player widget initialization complete');
@@ -433,6 +441,75 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _controlsTimer?.cancel();
     if (_isPlaying) {
       _startControlsTimer();
+    }
+  }
+
+  // Brightness control methods
+  Future<void> _initializeBrightness() async {
+    // Initialize with default brightness (simulated)
+    _currentBrightness = 0.5;
+    _originalBrightness = 0.5;
+    debugPrint('[BRIGHTNESS] Brightness control initialized (simulated)');
+  }
+
+  void _onBrightnessStart() {
+    setState(() {
+      _isBrightnessAdjusting = true;
+    });
+    HapticFeedback.selectionClick();
+    _resetControlsTimer();
+  }
+
+  void _onBrightnessUpdate(DragUpdateDetails details) {
+    if (!_isBrightnessAdjusting) return;
+    
+    // Calculate brightness change based on vertical swipe
+    double screenHeight = MediaQuery.of(context).size.height;
+    double sensitivity = screenHeight * 0.4; // Adjust sensitivity
+    double delta = -details.delta.dy / sensitivity; // Negative because swipe up should increase brightness
+    
+    // Ignore very small movements
+    if (delta.abs() < 0.005) return;
+    
+    _adjustBrightness(delta);
+  }
+
+  void _onBrightnessEnd() {
+    setState(() {
+      _isBrightnessAdjusting = false;
+    });
+    _resetControlsTimer();
+  }
+
+  void _adjustBrightness(double delta) async {
+    try {
+      double newBrightness = (_currentBrightness + delta).clamp(0.0, 1.0);
+      
+      // Only update if there's a meaningful change
+      if ((newBrightness - _currentBrightness).abs() < 0.01) return;
+      
+      setState(() {
+        _currentBrightness = newBrightness;
+      });
+      
+      // Simulate brightness setting (visual feedback only)
+      _brightnessDebounceTimer?.cancel();
+      _brightnessDebounceTimer = Timer(const Duration(milliseconds: 100), () async {
+        debugPrint('[BRIGHTNESS] Simulated brightness: $newBrightness');
+        // TODO: Integrate with actual system brightness control
+      });
+    } catch (e) {
+      debugPrint('[BRIGHTNESS] Error calculating brightness: $e');
+    }
+  }
+
+  IconData _getBrightnessIcon(double brightness) {
+    if (brightness < 0.3) {
+      return Icons.brightness_low;
+    } else if (brightness < 0.7) {
+      return Icons.brightness_medium;
+    } else {
+      return Icons.brightness_high;
     }
   }
   
@@ -868,13 +945,36 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
               ),
             ),
           ),
-          // Invisible overlay for tap detection
+          // Gesture detection overlay with left/right split
           Positioned.fill(
-            child: GestureDetector(
-              onTap: _toggleControls,
-              onDoubleTap: _togglePlayPause,
-              behavior: HitTestBehavior.translucent,
-              child: const SizedBox.expand(),
+            child: Row(
+              children: [
+                // Left side for brightness control (1/4 of screen)
+                Expanded(
+                  flex: 1,
+                  child: GestureDetector(
+                    onTap: _toggleControls,
+                    onPanStart: (_) => _onBrightnessStart(),
+                    onPanUpdate: _onBrightnessUpdate,
+                    onPanEnd: (_) => _onBrightnessEnd(),
+                    behavior: HitTestBehavior.translucent,
+                    child: Container(
+                      color: Colors.transparent,
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                ),
+                // Right side for video controls (3/4 of screen)
+                Expanded(
+                  flex: 3,
+                  child: GestureDetector(
+                    onTap: _toggleControls,
+                    onDoubleTap: _togglePlayPause,
+                    behavior: HitTestBehavior.translucent,
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ],
             ),
           ),
             
@@ -979,7 +1079,12 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             // Settings panel
             if (_showSettings)
               _buildSettingsPanel(),
+
               
+          // Brightness indicator (when adjusting brightness)
+          if (_isBrightnessAdjusting)
+            _buildBrightnessIndicator(),
+
           // Zoom indicator (for pinch-zoom level)
           if (_isZoomed && _currentZoomMode == ZoomMode.custom) // Only show for custom pinch zoom
             _buildZoomIndicator(),
@@ -1644,6 +1749,56 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     );
   }
   
+  Widget _buildBrightnessIndicator() {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.8),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _getBrightnessIcon(_currentBrightness),
+              color: Colors.white,
+              size: 28,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${(_currentBrightness * 100).round()}%',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Container(
+              width: 60,
+              height: 3,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: _currentBrightness,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildZoomIndicator() {
     return Positioned(
       top: 100,
