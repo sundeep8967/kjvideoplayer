@@ -141,6 +141,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _initializeVolume();
     _initializePlayer();
     _startControlsTimer();
+    _enableWakeLock();
     debugPrint('[INIT] Player widget initialization complete');
   }
   
@@ -221,11 +222,11 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
 
   void _initializeAnimations() {
     _controlsAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 250), // Smooth duration
       vsync: this,
     );
     _settingsAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 250),
+      duration: const Duration(milliseconds: 300), // Slightly longer for settings
       vsync: this,
     );
     
@@ -234,7 +235,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _controlsAnimationController,
-      curve: Curves.easeInOut,
+      curve: Curves.easeInOut, // Smooth in and out
+      reverseCurve: Curves.easeInOut, // Smooth reverse animation
     ));
     
     _settingsSlideAnimation = Tween<double>(
@@ -242,7 +244,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       end: 0.0,
     ).animate(CurvedAnimation(
       parent: _settingsAnimationController,
-      curve: Curves.easeInOut,
+      curve: Curves.easeInOut, // Smooth slide animation
+      reverseCurve: Curves.easeInOut,
     ));
     
     _controlsAnimationController.forward();
@@ -657,6 +660,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   }
   
   void _showControlsUI() {
+    if (!mounted) return;
     setState(() {
       _showControls = true;
     });
@@ -665,6 +669,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   }
   
   void _hideControls() {
+    if (!mounted) return;
     setState(() {
       _showControls = false;
       _showSettings = false;
@@ -1297,35 +1302,36 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
               ),
             
             // Custom video player controls
-            Visibility(
-              visible: _showControls && _error == null, // Only build/layout when visible
-              child: AnimatedBuilder(
-                animation: _controlsOpacity,
-                builder: (context, child) {
-                  return Opacity(
-                    opacity: _controlsOpacity.value, // Still use opacity for fade effect
-                    child: Stack(
-                      children: [
-                        // Top controls (back button, title, settings)
-                        _buildTopControls(),
-                        
-                        // Center controls (play/pause, seek)
-                        _buildCenterControls(),
-                        
-                        // Bottom controls (progress bar, volume, speed, etc.)
-                        _buildBottomControls(),
-                        
-                        // Speed menu
-                        if (_showSpeedMenu)
-                          _buildSpeedMenu(),
-                          
-                        // Volume slider
-                        if (_showVolumeSlider)
-                          _buildVolumeSlider(),
-                      ],
-                    ),
-                  );
-                },
+            AnimatedBuilder(
+              animation: _controlsOpacity,
+              builder: (context, child) {
+                return IgnorePointer(
+                  ignoring: !_showControls || _error != null,
+                  child: Opacity(
+                    opacity: _error != null ? 0.0 : _controlsOpacity.value,
+                    child: child,
+                  ),
+                );
+              },
+              child: Stack(
+                children: [
+                  // Top controls (back button, title, settings)
+                  _buildTopControls(),
+                  
+                  // Center controls (play/pause, seek)
+                  _buildCenterControls(),
+                  
+                  // Bottom controls (progress bar, volume, speed, etc.)
+                  _buildBottomControls(),
+                  
+                  // Speed menu
+                  if (_showSpeedMenu)
+                    _buildSpeedMenu(),
+                    
+                  // Volume slider
+                  if (_showVolumeSlider)
+                    _buildVolumeSlider(),
+                ],
               ),
             ),
               
@@ -2433,6 +2439,37 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     );
   }
 
+  // Wake lock methods to keep screen on during video playback
+  Future<void> _enableWakeLock() async {
+    try {
+      await SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.immersiveSticky,
+        overlays: [],
+      );
+      // Keep screen on during video playback
+      SystemChrome.setSystemUIOverlayStyle(
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          systemNavigationBarColor: Colors.transparent,
+        ),
+      );
+      debugPrint('[WAKE_LOCK] Screen wake lock enabled');
+    } catch (e) {
+      debugPrint('[WAKE_LOCK] Failed to enable wake lock: $e');
+    }
+  }
+
+  Future<void> _disableWakeLock() async {
+    try {
+      await SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.edgeToEdge,
+      );
+      debugPrint('[WAKE_LOCK] Screen wake lock disabled');
+    } catch (e) {
+      debugPrint('[WAKE_LOCK] Failed to disable wake lock: $e');
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -2447,6 +2484,9 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     // Dispose animation controllers
     _controlsAnimationController.dispose();
     _settingsAnimationController.dispose();
+    
+    // Disable wake lock
+    _disableWakeLock();
     
     // Cancel subscriptions
     _playingSubscription.cancel();
