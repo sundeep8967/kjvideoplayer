@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import '../../core/platform/media3_player_controller.dart';
 import 'subtitle_tracks_dialog.dart';
+import 'video_settings_dialog.dart';
 
 // Enum for Zoom Modes
 enum ZoomMode { fit, stretch, zoomToFill, custom }
@@ -1085,14 +1086,31 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             // Settings button
             IconButton(
               onPressed: () {
-                setState(() {
-                  _showSettings = !_showSettings;
-                });
-                if (_showSettings) {
-                  _settingsAnimationController.forward();
-                } else {
-                  _settingsAnimationController.reverse();
-                }
+                VideoSettingsDialog.show(
+                  context,
+                  _controller,
+                  currentSpeed: _currentSpeed,
+                  currentVolume: _currentVolume,
+                  isMuted: _isMuted,
+                  onSpeedChanged: (speed) {
+                    setState(() {
+                      _currentSpeed = speed;
+                    });
+                    _controller?.setPlaybackSpeed(speed);
+                  },
+                  onVolumeChanged: (volume) {
+                    setState(() {
+                      _currentVolume = volume;
+                    });
+                    _controller?.setVolume(volume);
+                  },
+                  onMuteChanged: (muted) {
+                    setState(() {
+                      _isMuted = muted;
+                    });
+                    _controller?.setVolume(muted ? 0.0 : _currentVolume);
+                  },
+                );
                 _resetControlsTimer();
               },
               icon: const Icon(Icons.settings, color: Colors.white, size: 24),
