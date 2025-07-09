@@ -1623,7 +1623,84 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
           mainAxisSize: MainAxisSize.min,
           children: [
             // Enhanced progress bar
-            _buildProgressBar(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        _formatDuration(_position, showPlaceholder: true),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 12),
+                          child: SliderTheme(
+                            data: SliderTheme.of(context).copyWith(
+                              trackHeight: 6,
+                              thumbColor: const Color(0xFF007AFF),
+                              activeTrackColor: const Color(0xFF007AFF),
+                              inactiveTrackColor: Colors.white.withOpacity(0.3),
+                              thumbShape: const RoundSliderThumbShape(
+                                enabledThumbRadius: 8,
+                                elevation: 4,
+                              ),
+                              overlayShape: const RoundSliderOverlayShape(
+                                overlayRadius: 16,
+                              ),
+                              trackShape: const RoundedRectSliderTrackShape(),
+                            ),
+                            child: Slider(
+                              value: (_duration.inMilliseconds > 0)
+                                  ? ((_draggingPosition ?? _position).inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0)
+                                  : 0.0,
+                              min: 0.0,
+                              max: 1.0,
+                              onChanged: (_duration.inMilliseconds > 0)
+                                  ? (value) {
+                                      if (!mounted) return;
+                                      final newDraggingPosition = Duration(milliseconds: (value * _duration.inMilliseconds).round());
+                                      setState(() {
+                                        _draggingPosition = newDraggingPosition;
+                                      });
+                                      _resetControlsTimer();
+                                    }
+                                  : null,
+                              onChangeEnd: (_duration.inMilliseconds > 0)
+                                  ? (value) {
+                                      if (!mounted) return;
+                                      if (_draggingPosition != null) {
+                                        final seekTo = _draggingPosition!.inMilliseconds.clamp(0, _duration.inMilliseconds);
+                                        _controller?.seekTo(Duration(milliseconds: seekTo));
+                                      }
+                                      setState(() {
+                                        _draggingPosition = null;
+                                      });
+                                      _resetControlsTimer();
+                                    }
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      ),
+                      Text(
+                        _formatDuration(_duration, showPlaceholder: true),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             
             const SizedBox(height: 20),
             
@@ -2346,210 +2423,259 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     return displayName;
   }
 
+  String _getFullLanguageName(String? languageCode) {
+    if (languageCode == null || languageCode.isEmpty) return 'Unknown';
+    
+    final languageMap = {
+      'en': 'English', 'es': 'Spanish', 'fr': 'French', 'de': 'German', 'it': 'Italian',
+      'pt': 'Portuguese', 'ru': 'Russian', 'ja': 'Japanese', 'ko': 'Korean', 'zh': 'Chinese',
+      'ar': 'Arabic', 'hi': 'Hindi', 'ta': 'Tamil', 'te': 'Telugu', 'kn': 'Kannada',
+      'ml': 'Malayalam', 'bn': 'Bengali', 'gu': 'Gujarati', 'mr': 'Marathi', 'pa': 'Punjabi',
+      'or': 'Odia', 'as': 'Assamese', 'ur': 'Urdu', 'ne': 'Nepali', 'si': 'Sinhala',
+      'my': 'Myanmar', 'th': 'Thai', 'vi': 'Vietnamese', 'id': 'Indonesian', 'ms': 'Malay',
+      'tl': 'Filipino', 'sw': 'Swahili', 'am': 'Amharic', 'he': 'Hebrew', 'tr': 'Turkish',
+      'fa': 'Persian', 'pl': 'Polish', 'cs': 'Czech', 'sk': 'Slovak', 'hu': 'Hungarian',
+      'ro': 'Romanian', 'bg': 'Bulgarian', 'hr': 'Croatian', 'sr': 'Serbian', 'sl': 'Slovenian',
+      'et': 'Estonian', 'lv': 'Latvian', 'lt': 'Lithuanian', 'fi': 'Finnish', 'sv': 'Swedish',
+      'no': 'Norwegian', 'da': 'Danish', 'is': 'Icelandic', 'nl': 'Dutch', 'af': 'Afrikaans',
+    };
+    
+    return languageMap[languageCode.toLowerCase()] ?? languageCode.toUpperCase();
+  }
+
   void _showAudioTracksBottomSheet() {
-    // Debug: Print current state
-    debugPrint('=== AUDIO TRACKS DEBUG ===');
-    debugPrint('_audioTracks.length: ${_audioTracks.length}');
-    debugPrint('_audioTracks: $_audioTracks');
-    debugPrint('_currentAudioTrackIndex: $_currentAudioTrackIndex');
-    debugPrint('_isInitialized: $_isInitialized');
-    debugPrint('========================');
-    
-    // Ensure we have the latest tracks data
-    _processVideoAudioTracks();
-    
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-      barrierColor: Colors.black54,
+      barrierColor: Colors.transparent,
       transitionDuration: const Duration(milliseconds: 300),
       pageBuilder: (context, animation, secondaryAnimation) {
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(1.0, 0.0),
-            end: Offset.zero,
-          ).animate(CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-          )),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                width: MediaQuery.of(context).size.width * 0.3,
-                height: MediaQuery.of(context).size.height,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerRight,
-                    end: Alignment.centerLeft,
-                    colors: [
-                      Colors.black.withOpacity(0.95),
-                      Colors.black.withOpacity(0.85),
-                      Colors.black.withOpacity(0.75),
-                    ],
-                    stops: const [0.0, 0.6, 1.0],
-                  ),
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(20),
-                    bottomLeft: Radius.circular(20),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 15,
-                      offset: const Offset(-3, 0),
-                    ),
-                  ],
-                ),
-                child: SafeArea(
-                  child: Column(
-                    children: [
-                      // Header
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.music_note, color: Colors.white, size: 16),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                'Audio (${_audioTracks.length})',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: () => Navigator.pop(context),
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                child: const Icon(Icons.close, color: Colors.white70, size: 16),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-              
-              // Audio tracks list
-              if (_videoAudioTracks.isEmpty)
-                Flexible(
-                  flex: 0,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Center(
-                      child: Text(
-                        'No audio tracks available',
-                        style: TextStyle(color: Colors.white70, fontSize: 16),
-                      ),
+        return Stack(
+          children: [
+            // Animated background that fades as panel slides in
+            AnimatedBuilder(
+              animation: animation,
+              builder: (context, child) {
+                final fadeProgress = animation.value;
+                return Container(
+                  width: double.infinity,
+                  height: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerRight,
+                      end: Alignment.centerLeft,
+                      colors: [
+                        Colors.black.withOpacity(0.7 * fadeProgress),
+                        Colors.black.withOpacity(0.5 * fadeProgress),
+                        Colors.black.withOpacity(0.3 * fadeProgress),
+                        Colors.black.withOpacity(0.15 * fadeProgress),
+                        Colors.black.withOpacity(0.05 * fadeProgress),
+                        Colors.transparent,
+                        Colors.transparent,
+                      ],
+                      stops: [
+                        0.0,
+                        0.2,
+                        0.4,
+                        0.6,
+                        0.75,
+                        0.85,
+                        1.0,
+                      ],
                     ),
                   ),
-                )
-              else
-                Expanded(
-                      child: ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        itemCount: _videoAudioTracks.length,
-                    itemBuilder: (context, index) {
-                      final track = _videoAudioTracks[index];
-                      final isSelected = track['isSelected'] ?? false;
-                      final displayName = track['displayName'] ?? track['name'] ?? 'Unknown Track';
-                      final language = track['language'] ?? 'Unknown';
-                      final codec = track['codec'] ?? 'Unknown';
-                      final bitrate = track['bitrate'] ?? 0;
-                      
-                      return Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: isSelected ? Colors.blue.withOpacity(0.2) : Colors.white.withOpacity(0.05),
-                          borderRadius: BorderRadius.circular(8),
-                          border: isSelected ? Border.all(color: Colors.blue, width: 1) : null,
+                );
+              },
+            ),
+            // Sliding panel
+            SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(1.0, 0.0),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              )),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    width: MediaQuery.of(context).size.width * 0.3,
+                    height: MediaQuery.of(context).size.height,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerRight,
+                        end: Alignment.centerLeft,
+                        colors: [
+                          Colors.black.withOpacity(0.95),
+                          Colors.black.withOpacity(0.9),
+                          Colors.black.withOpacity(0.8),
+                          Colors.black.withOpacity(0.6),
+                          Colors.black.withOpacity(0.3),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.3, 0.5, 0.7, 0.85, 1.0],
+                      ),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(8),
+                        bottomLeft: Radius.circular(8),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 25,
+                          offset: const Offset(-5, 0),
+                          spreadRadius: 5,
                         ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(8),
-                            onTap: () async {
-                              try {
-                                final trackIndex = track['index'] ?? index;
-                                await _controller?.selectAudioTrack(trackIndex);
-                                if (mounted) {
-                                  Navigator.pop(context);
-                                }
-                              } catch (e) {
-                                if (mounted) {
-                                  Navigator.pop(context);
-                                }
-                              }
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 16,
-                                    height: 16,
-                                    decoration: BoxDecoration(
-                                      color: isSelected ? Colors.blue : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: isSelected ? Colors.blue : Colors.white.withOpacity(0.3),
-                                        width: 1.5,
+                      ],
+                    ),
+                    child: SafeArea(
+                      child: Column(
+                        children: [
+                          // Header
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(8, 6, 20, 6),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.music_note, color: Colors.white, size: 16),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Center(
+                                    child: Text(
+                                      'Audio (${_audioTracks.length})',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
-                                    child: isSelected 
-                                      ? const Icon(Icons.check, color: Colors.white, size: 10)
-                                      : null,
                                   ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          displayName,
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                                            fontSize: 11,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                          maxLines: 1,
-                                        ),
-                                        const SizedBox(height: 1),
-                                        Text(
-                                          language,
-                                          style: TextStyle(
-                                            color: isSelected ? Colors.blue.shade200 : Colors.white60,
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.w400,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ],
-                                    ),
+                                ),
+                                GestureDetector(
+                                  onTap: () => Navigator.pop(context),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    child: const Icon(Icons.close, color: Colors.white70, size: 16),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              
-              const SizedBox(height: 20),
-                    ],
+                          // Audio tracks list
+                          if (_videoAudioTracks.isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 20),
+                              child: Center(
+                                child: Text(
+                                  'No audio tracks available',
+                                  style: TextStyle(color: Colors.white70, fontSize: 16),
+                                ),
+                              ),
+                            )
+                          else
+                            Expanded(
+                              child: ListView.builder(
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                itemCount: _videoAudioTracks.length,
+                                itemBuilder: (context, index) {
+                                  final track = _videoAudioTracks[index];
+                                  final isSelected = track['isSelected'] ?? false;
+                                  final displayName = track['displayName'] ?? track['name'] ?? 'Track ${index + 1}';
+                                  final languageCode = track['language'] ?? 'Unknown';
+                                  final language = _getFullLanguageName(languageCode);
+                                  
+                                  return Container(
+                                    margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: isSelected ? Colors.blue.withOpacity(0.2) : Colors.white.withOpacity(0.05),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: isSelected ? Border.all(color: Colors.blue, width: 1) : null,
+                                    ),
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(8),
+                                        onTap: () async {
+                                          try {
+                                            final trackIndex = track['index'] ?? index;
+                                            await _controller?.selectAudioTrack(trackIndex);
+                                            if (mounted) {
+                                              Navigator.pop(context);
+                                            }
+                                          } catch (e) {
+                                            if (mounted) {
+                                              Navigator.pop(context);
+                                            }
+                                          }
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                          child: Row(
+                                            children: [
+                                              Container(
+                                                width: 16,
+                                                height: 16,
+                                                decoration: BoxDecoration(
+                                                  color: isSelected ? Colors.blue : Colors.transparent,
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  border: Border.all(
+                                                    color: isSelected ? Colors.blue : Colors.white.withOpacity(0.3),
+                                                    width: 1.5,
+                                                  ),
+                                                ),
+                                                child: isSelected 
+                                                  ? const Icon(Icons.check, color: Colors.white, size: 10)
+                                                  : null,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Text(
+                                                      displayName,
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                                                        fontSize: 11,
+                                                      ),
+                                                      overflow: TextOverflow.ellipsis,
+                                                      maxLines: 1,
+                                                    ),
+                                                    const SizedBox(height: 1),
+                                                    Text(
+                                                      language,
+                                                      style: TextStyle(
+                                                        color: isSelected ? Colors.blue.shade200 : Colors.white60,
+                                                        fontSize: 9,
+                                                        fontWeight: FontWeight.w400,
+                                                      ),
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          const SizedBox(height: 20),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
+          ],
         );
       },
     );
@@ -2655,88 +2781,6 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         icon,
         color: isActive ? const Color(0xFF007AFF) : Colors.white,
         size: size,
-      ),
-    );
-  }
-
-  // Enhanced progress bar widget
-  Widget _buildProgressBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Text(
-                _formatDuration(_position, showPlaceholder: true),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              Expanded(
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 12),
-                  child: SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      trackHeight: 6,
-                      thumbColor: const Color(0xFF007AFF),
-                      activeTrackColor: const Color(0xFF007AFF),
-                      inactiveTrackColor: Colors.white.withOpacity(0.3),
-                      thumbShape: const RoundSliderThumbShape(
-                        enabledThumbRadius: 8,
-                        elevation: 4,
-                      ),
-                      overlayShape: const RoundSliderOverlayShape(
-                        overlayRadius: 16,
-                      ),
-                      trackShape: const RoundedRectSliderTrackShape(),
-                    ),
-                    child: Slider(
-                      value: (_duration.inMilliseconds > 0)
-                          ? ((_draggingPosition ?? _position).inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0)
-                          : 0.0,
-                      min: 0.0,
-                      max: 1.0,
-                      onChanged: (_duration.inMilliseconds > 0)
-                          ? (value) {
-                              if (!mounted) return;
-                              final newDraggingPosition = Duration(milliseconds: (value * _duration.inMilliseconds).round());
-                              setState(() {
-                                _draggingPosition = newDraggingPosition;
-                              });
-                              _resetControlsTimer();
-                            }
-                          : null,
-                      onChangeEnd: (_duration.inMilliseconds > 0)
-                          ? (value) {
-                              if (!mounted) return;
-                              if (_draggingPosition != null) {
-                                final seekTo = _draggingPosition!.inMilliseconds.clamp(0, _duration.inMilliseconds);
-                                _controller?.seekTo(Duration(milliseconds: seekTo));
-                              }
-                              setState(() {
-                                _draggingPosition = null;
-                              });
-                              _resetControlsTimer();
-                            }
-                          : null,
-                    ),
-                  ),
-                ),
-              ),
-              Text(
-                _formatDuration(_duration, showPlaceholder: true),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
