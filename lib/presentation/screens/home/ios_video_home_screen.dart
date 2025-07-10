@@ -46,10 +46,6 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
   List<String> _filteredFolders = [];
   
   late PageController _pageController;
-  late AnimationController _animationController;
-  late AnimationController _tabAnimationController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
 
   // iOS-style colors
   static const Color iosBlue = Color(0xFF007AFF);
@@ -70,47 +66,17 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     SystemUIHelper.setAppThemeUI();
     
     _pageController = PageController(initialPage: _selectedTabIndex);
-    _initializeAnimations();
     _loadSavedViewMode();
     _checkAndRequestStoragePermission();
     _loadRecentFiles();
     _loadAllVideos();
   }
 
-  void _initializeAnimations() {
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 600),
-      vsync: this,
-    );
-    
-    _tabAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-    
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOut,
-    ));
-    
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOutCubic,
-    ));
-  }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
-    _animationController.dispose();
-    _tabAnimationController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -162,7 +128,6 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
       
       if (_hasPermission) {
         await _loadAllVideos();
-        _animationController.forward();
       }
     } catch (e) {
       print('Error requesting storage permission: $e');
@@ -599,19 +564,28 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
             
             // Content with swipe navigation
             Expanded(
-              child: PageView(
+              child: PageView.builder(
                 controller: _pageController,
+                physics: const BouncingScrollPhysics(),
+                itemCount: 3,
                 onPageChanged: (index) {
                   setState(() {
                     _selectedTabIndex = index;
                   });
                   HapticFeedbackHelper.lightImpact();
                 },
-                children: [
-                  _buildFoldersContent(),    // Index 0 - Folders
-                  _buildAllVideosContent(),  // Index 1 - All Videos  
-                  _buildRecentContent(),     // Index 2 - Recent
-                ],
+                itemBuilder: (context, index) {
+                  switch (index) {
+                    case 0:
+                      return _buildFoldersContent();
+                    case 1:
+                      return _buildAllVideosContent();
+                    case 2:
+                      return _buildRecentContent();
+                    default:
+                      return _buildFoldersContent();
+                  }
+                },
               ),
             ),
             
@@ -651,8 +625,8 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
           });
           _pageController.animateToPage(
             index,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
           );
         },
         child: Container(
@@ -688,13 +662,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     if (_isLoading) return _buildLoadingContent();
     if (!_hasPermission) return _buildPermissionRequest();
     
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: SlideTransition(
-        position: _slideAnimation,
-        child: _buildFoldersGrid(),
-      ),
-    );
+    return _buildFoldersGrid();
   }
 
   Widget _buildAllVideosContent() {
@@ -704,17 +672,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     // All Videos tab should show all videos, not filtered by search when not searching
     final videosToShow = _searchQuery.isEmpty ? _allVideos : _filteredVideos;
     
-    print('DEBUG: All Videos tab - videosToShow.length: ${videosToShow.length}');
-    print('DEBUG: _allVideos.length: ${_allVideos.length}');
-    print('DEBUG: _searchQuery: "$_searchQuery"');
-    
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: SlideTransition(
-        position: _slideAnimation,
-        child: _buildVideoContentView(videosToShow),
-      ),
-    );
+    return _buildVideoContentView(videosToShow);
   }
 
   Widget _buildRecentContent() {
@@ -742,13 +700,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
           video.name.toLowerCase().contains(_searchQuery.toLowerCase())
         ).toList();
     
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: SlideTransition(
-        position: _slideAnimation,
-        child: _buildVideoContentView(videosToShow),
-      ),
-    );
+    return _buildVideoContentView(videosToShow);
   }
 
   Widget _buildLoadingContent() {
