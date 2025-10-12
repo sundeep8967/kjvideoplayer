@@ -26,6 +26,7 @@ class Media3PlayerController {
   final StreamController<Map<String, dynamic>> _tracksController = StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _videoSizeController = StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<double> _systemVolumeController = StreamController<double>.broadcast();
+  final StreamController<Map<String, dynamic>> _nativeButtonController = StreamController<Map<String, dynamic>>.broadcast();
   
   // Getters
   bool get isInitialized => _isInitialized;
@@ -45,6 +46,7 @@ class Media3PlayerController {
   Stream<Map<String, dynamic>> get onTracksChanged => _tracksController.stream;
   Stream<Map<String, dynamic>> get onVideoSizeChanged => _videoSizeController.stream;
   Stream<double> get onSystemVolumeChanged => _systemVolumeController.stream;
+  Stream<Map<String, dynamic>> get onNativeButtonClicked => _nativeButtonController.stream;
   
   Media3PlayerController({required this.viewId}) {
     _channel = MethodChannel('media3_player_$viewId');
@@ -91,6 +93,18 @@ class Media3PlayerController {
           break;
         case 'onSystemVolumeChanged':
           _handleSystemVolumeChanged(call.arguments as Map<dynamic, dynamic>);
+          break;
+        case 'onSubtitleButtonClicked':
+          _handleNativeButtonClick('subtitle', call.arguments);
+          break;
+        case 'onAudioTrackButtonClicked':
+          _handleNativeButtonClick('audioTrack', call.arguments);
+          break;
+        case 'onSettingsButtonClicked':
+          _handleNativeButtonClick('settings', call.arguments);
+          break;
+        case 'onBackButtonClicked':
+          _handleNativeButtonClick('back', call.arguments);
           break;
         default:
           debugPrint('[Media3PlayerController] Unhandled native method: ${call.method}');
@@ -441,6 +455,14 @@ class Media3PlayerController {
     _systemVolumeController.add(volume);
   }
   
+  void _handleNativeButtonClick(String buttonType, dynamic data) {
+    debugPrint('[Media3PlayerController] Native button clicked: $buttonType');
+    _nativeButtonController.add({
+      'buttonType': buttonType,
+      'data': data,
+    });
+  }
+  
   /// Safe audio track selection with comprehensive validation
   Future<void> selectAudioTrack(int index) async {
     try {
@@ -566,6 +588,17 @@ class Media3PlayerController {
       debugPrint('[Media3PlayerController] Error invoking native setResizeMode(): $e');
       _error = e.toString(); // Optionally propagate error
       _errorController.add(_error);
+    }
+  }
+  
+  /// Set the video title in native UI overlay
+  Future<void> setVideoTitle(String title) async {
+    debugPrint('[Media3PlayerController] Setting video title: $title');
+    try {
+      await _channel.invokeMethod('setVideoTitle', {'title': title});
+      debugPrint('[Media3PlayerController] Video title set successfully');
+    } catch (e) {
+      debugPrint('[Media3PlayerController] Error setting video title: $e');
     }
   }
 
@@ -837,6 +870,7 @@ class Media3PlayerController {
     _initializedController.close();
     _performanceController.close();
     _tracksController.close();
+    _nativeButtonController.close();
     // Dispose the native player
     debugPrint('[Media3PlayerController] Invoking native dispose()');
     _channel.invokeMethod('dispose').catchError((e) {

@@ -299,6 +299,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       _initializeSystemVolume();
       _listenToSystemVolumeChanges();
       
+      // Using Flutter custom UI controls (not native)
+      
       // Add delay to ensure tracks are processed after initialization
       await Future.delayed(const Duration(milliseconds: 500));
       _fetchAndUpdateCurrentAudioTrackIndex();
@@ -461,6 +463,9 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
         }
       });
     });
+    
+    // Native controls disabled - using Flutter custom UI
+    
     debugPrint('[_Media3PlayerWidgetState] _setupEventListeners: Listeners setup complete.');
   }
   
@@ -876,6 +881,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     widget.onBookmarkAdded?.call(_position);
     _resetControlsTimer();
   }
+  
   
   // Combined gesture handlers
   bool _isMultiFingerGesture = false;

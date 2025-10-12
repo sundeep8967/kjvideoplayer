@@ -857,6 +857,8 @@ class Media3PlayerView(
     private fun setupPlayerView() {
         playerView.apply {
             player = exoPlayer
+            
+            // DISABLE native Media3 controls - Flutter has custom UI
             useController = false
             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
             
@@ -864,10 +866,12 @@ class Media3PlayerView(
             controllerHideOnTouch = false
             setControllerVisibilityListener(null as PlayerView.ControllerVisibilityListener?)
             setFullscreenButtonClickListener(null)
+            
+            Log.d(TAG, "Native controls disabled - using Flutter custom UI")
 
-            // Critical: Disable focus to prevent UI lag
-            isFocusable = false
-            isClickable = false
+            // Enable user interaction for controls
+            isFocusable = true
+            isClickable = true
             isLongClickable = false
             
             // Optimize rendering
@@ -879,26 +883,42 @@ class Media3PlayerView(
         }
 
         frameLayout.apply {
-            isFocusable = false
-            isClickable = false
+            isFocusable = true
+            isClickable = true
             isLongClickable = false
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
             addView(playerView)
         }
         
+        // Native controls disabled - Flutter handles all UI
+        
         playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
         
-        // Aggressively remove any UI elements that might appear
-        playerView.post {
-            // removeAllUIElements()
+        Log.d(TAG, "PlayerView setup with native controls disabled (Flutter custom UI)")
+    }
+    
+    private fun setupCustomControlButtons() {
+        try {
+            // Using default Media3 controls
+            // Custom buttons would require custom layout XML
+            // For now, we'll use the default controls and rely on Flutter dialogs
             
-            // Continuously monitor for any added UI elements
-            playerView.viewTreeObserver.addOnGlobalLayoutListener {
-                // removeAllUIElements()
-            }
+            Log.d(TAG, "Using default Media3 control buttons")
+            Log.d(TAG, "Note: Custom buttons require custom layout implementation")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in control buttons setup: $e")
         }
-        
-        Log.d(TAG, "PlayerView setup with clean video surface only")
+    }
+    
+    private fun setVideoTitleInNativeUI(title: String) {
+        try {
+            // Custom title requires custom layout
+            // For now, log the title (would need custom layout XML to display)
+            Log.d(TAG, "Video title: $title (requires custom layout for display)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error with video title: $e")
+        }
     }
     
     private fun removeAllUIElements() {
@@ -1363,6 +1383,12 @@ class Media3PlayerView(
                     }
                     playerView.resizeMode = resizeMode
                     Log.d(TAG, "Set resizeMode to $modeString ($resizeMode)")
+                    result.success(null)
+                }
+                
+                "setVideoTitle" -> {
+                    val title = call.argument<String>("title") ?: "Video"
+                    setVideoTitleInNativeUI(title)
                     result.success(null)
                 }
                 
