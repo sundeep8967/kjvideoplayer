@@ -890,11 +890,11 @@ class Media3PlayerView(
         
         // Aggressively remove any UI elements that might appear
         playerView.post {
-            removeAllUIElements()
+            // removeAllUIElements()
             
             // Continuously monitor for any added UI elements
             playerView.viewTreeObserver.addOnGlobalLayoutListener {
-                removeAllUIElements()
+                // removeAllUIElements()
             }
         }
         
@@ -1055,13 +1055,13 @@ class Media3PlayerView(
                 
                 // Immediately and aggressively remove all UI elements when loading starts
                 if (isLoading) {
-                    removeAllUIElements()
-                    hideAllBufferingViews(playerView)
+                    // removeAllUIElements()
+                    // hideAllBufferingViews(playerView)
                     
                     // Also schedule continuous removal during loading
                     playerView.postDelayed({
-                        removeAllUIElements()
-                        hideAllBufferingViews(playerView)
+                        // removeAllUIElements()
+                        // hideAllBufferingViews(playerView)
                     }, 50) // Very frequent removal during loading
                 }
                 
@@ -1076,7 +1076,7 @@ class Media3PlayerView(
                     }
                     Player.STATE_BUFFERING -> {
                         // Aggressively hide buffering views when buffering starts
-                        hideAllBufferingViews(playerView)
+                        // hideAllBufferingViews(playerView)
                     }
                 }
                 
@@ -1089,7 +1089,7 @@ class Media3PlayerView(
                 }
                 
                 // Always hide buffering views regardless of state
-                hideAllBufferingViews(playerView)
+                // hideAllBufferingViews(playerView)
                 
                 channel.invokeMethod("onPlaybackStateChanged", mapOf(
                     "state" to stateString,
