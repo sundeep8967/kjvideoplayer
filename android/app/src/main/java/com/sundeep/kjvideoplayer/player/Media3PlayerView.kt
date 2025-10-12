@@ -4,8 +4,16 @@ import android.content.Context
 import android.content.BroadcastReceiver
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.ComponentCallbacks2
+import android.content.res.Configuration
+import android.app.PictureInPictureParams
+import android.util.Rational
+import android.os.Build
+import androidx.annotation.RequiresApi
+import android.app.Activity
 import android.database.ContentObserver
 import android.media.AudioManager
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -13,11 +21,14 @@ import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.widget.FrameLayout
+import android.graphics.Bitmap
+import java.io.ByteArrayOutputStream
 import androidx.annotation.OptIn
 import androidx.media3.common.*
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.*
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.session.MediaSession
 import androidx.media3.ui.*
 import androidx.media3.ui.AspectRatioFrameLayout // Required for RESIZE_MODE constants
 import io.flutter.plugin.common.BinaryMessenger
@@ -44,25 +55,80 @@ class Media3PlayerView(
     private var volumeContentObserver: ContentObserver? = null
     private var volumeBroadcastReceiver: BroadcastReceiver? = null
 
-    // Handler for periodic position updates
+    // Handler for periodic position updates - optimized frequency
     private val positionUpdateHandler = android.os.Handler(context.mainLooper)
     private val positionUpdateRunnable = object : Runnable {
         override fun run() {
             sendPositionUpdate()
-            positionUpdateHandler.postDelayed(this, 250)
+            positionUpdateHandler.postDelayed(this, 500) // Optimized: 500ms for balance between performance and responsiveness
         }
     }
     
     private val frameLayout: FrameLayout = FrameLayout(context)
-    private val playerView: PlayerView = PlayerView(context)
+    private val playerView: PlayerView = PlayerView(context).apply {
+        // Completely disable the default PlayerView layout
+        setLayoutParams(FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+    }
     private val channel: MethodChannel = MethodChannel(messenger, "media3_player_$id")
     
-    // Track selector for advanced track detection
-    private val trackSelector: DefaultTrackSelector = DefaultTrackSelector(context)
+    // Enhanced track selector for smooth playback
+    private val trackSelector: DefaultTrackSelector = DefaultTrackSelector(context).apply {
+        setParameters(buildUponParameters()
+            .setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
+            .setMaxVideoBitrate(Int.MAX_VALUE)
+            .setPreferredAudioLanguage("en")
+            .setForceLowestBitrate(false)
+            .setAllowVideoMixedMimeTypeAdaptiveness(true)
+            .setAllowAudioMixedMimeTypeAdaptiveness(true)
+            .setAllowVideoNonSeamlessAdaptiveness(true)
+            .setTunnelingEnabled(false)
+            .setRendererDisabled(C.TRACK_TYPE_AUDIO, false)
+            .setPreferredTextLanguage("en")
+            .setSelectUndeterminedTextLanguage(true)
+        )
+    }
     
     // Media3 ExoPlayer instance
-    private val exoPlayer: ExoPlayer by lazy {
-        createMedia3Player(context)
+    private lateinit var exoPlayer: ExoPlayer
+    
+    // MediaSession for external controls and audio focus
+    private var mediaSession: MediaSession? = null
+    
+    // Picture-in-Picture support
+    private var isPipSupported: Boolean = false
+    private var currentVideoAspectRatio: Rational = Rational(16, 9) // Default 16:9
+    
+    // Memory pressure monitoring for better performance
+    private val memoryPressureCallback = object : ComponentCallbacks2 {
+        override fun onTrimMemory(level: Int) {
+            when (level) {
+                ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW -> {
+                    Log.d(TAG, "Memory pressure detected - optimizing performance")
+                    // Reduce position update frequency under memory pressure
+                    positionUpdateHandler.removeCallbacks(positionUpdateRunnable)
+                    positionUpdateHandler.postDelayed(positionUpdateRunnable, 1000) // Slower updates
+                }
+                ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL -> {
+                    Log.w(TAG, "Critical memory pressure - aggressive optimization")
+                    // Pause position updates temporarily
+                    stopPositionUpdates()
+                    // Resume after brief delay
+                    positionUpdateHandler.postDelayed({ startPositionUpdates() }, 2000)
+                }
+            }
+        }
+        
+        override fun onLowMemory() {
+            Log.w(TAG, "Low memory warning - optimizing player")
+            // Reduce update frequency but keep playback smooth
+            stopPositionUpdates()
+            positionUpdateHandler.postDelayed({ startPositionUpdates() }, 1000)
+        }
+        
+        override fun onConfigurationChanged(newConfig: Configuration) {}
     }
     
     // Player state
@@ -70,14 +136,19 @@ class Media3PlayerView(
     private var playWhenReady = true
     private var currentPosition = 0L
     private var mediaItemIndex = 0
+    private var currentVideoPath: String? = null
 
     
     init {
+        val videoPath = creationParams?.get("videoPath") as? String
+        exoPlayer = PlayerPoolManager.acquirePlayer(context, videoPath ?: "dummy_path_${System.currentTimeMillis()}")
+
         setupPlayerView()
         setupMethodChannel()
         setupPlayerListener()
+        setupMediaSession() // Initialize MediaSession
+        setupPictureInPicture() // Initialize PiP support
 
-        val videoPath = creationParams?.get("videoPath") as? String
         val autoPlay = creationParams?.get("autoPlay") as? Boolean ?: true
         val startPosition = creationParams?.get("startPosition") as? Long
 
@@ -92,6 +163,9 @@ class Media3PlayerView(
         initializeVolumeObserver()
         // Initialize volume broadcast receiver
         initializeVolumeBroadcastReceiver()
+        
+        // Register memory pressure monitoring
+        context.registerComponentCallbacks(memoryPressureCallback)
     }
 
     private fun initializeVolumeBroadcastReceiver() {
@@ -112,56 +186,7 @@ class Media3PlayerView(
         Log.d(TAG, "Volume broadcast receiver initialized")
     }
     
-    private fun createMedia3Player(context: Context): ExoPlayer {
-        // Optimized LoadControl based on AndroidX Media3 best practices
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,           // 50s min buffer
-                DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,           // 50s max buffer  
-                DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,  // 2.5s for playback
-                DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS // 5s after rebuffer
-            )
-            .setTargetBufferBytes(DefaultLoadControl.DEFAULT_TARGET_BUFFER_BYTES) // Dynamic buffer sizing
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .setBackBuffer(DefaultLoadControl.DEFAULT_BACK_BUFFER_DURATION_MS, true) // Enable back buffer
-            .build()
 
-        // Use the class-level trackSelector so we can switch tracks later
-        trackSelector.setParameters(
-            trackSelector.buildUponParameters()
-                .setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
-                .setMaxVideoBitrate(Int.MAX_VALUE)
-                .setPreferredAudioLanguage("en")
-                .setForceLowestBitrate(false)
-                .setAllowVideoMixedMimeTypeAdaptiveness(true)
-                .setAllowAudioMixedMimeTypeAdaptiveness(true)
-                .setAllowVideoNonSeamlessAdaptiveness(true)
-                .setTunnelingEnabled(false)
-                .setRendererDisabled(C.TRACK_TYPE_AUDIO, false) // Ensure audio renderer is enabled
-                .setPreferredTextLanguage("en")
-                .setSelectUndeterminedTextLanguage(true)
-        )
-
-        // Enhanced ExoPlayer with performance optimizations
-        return ExoPlayer.Builder(context)
-            .setLoadControl(loadControl)
-            .setTrackSelector(trackSelector)
-            .setSeekBackIncrementMs(10_000)
-            .setSeekForwardIncrementMs(30_000)
-            .setHandleAudioBecomingNoisy(true)
-            .setWakeMode(C.WAKE_MODE_NETWORK)
-            .setUseLazyPreparation(true)
-            .build().apply {
-                setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING)
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(C.USAGE_MEDIA)
-                        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                        .build(),
-                    true
-                )
-            }
-    }
 
     // Add this method to get tracks using TrackSelector directly
     private fun getTracksFromTrackSelector(): Map<String, Any> {
@@ -832,85 +857,252 @@ class Media3PlayerView(
     private fun setupPlayerView() {
         playerView.apply {
             player = exoPlayer
-            useController = false // Completely disable all native UI controls
-            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER) // Hide buffering indicator
-
-            // Disable all controller features
+            useController = false
+            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+            
             controllerAutoShow = false
             controllerHideOnTouch = false
-
-            // Remove all listeners that might show UI elements
             setControllerVisibilityListener(null as PlayerView.ControllerVisibilityListener?)
             setFullscreenButtonClickListener(null)
 
-            // Make PlayerView non-interactive to touch to pass events to Flutter
+            // Critical: Disable focus to prevent UI lag
             isFocusable = false
             isClickable = false
             isLongClickable = false
+            
+            // Optimize rendering
+            setShutterBackgroundColor(android.graphics.Color.BLACK)
+            setKeepContentOnPlayerReset(true)
+            
+            // Enable hardware acceleration
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
 
         frameLayout.apply {
-            // Make FrameLayout non-interactive to touch
             isFocusable = false
             isClickable = false
             isLongClickable = false
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)
             addView(playerView)
         }
-        // Set initial resize mode
+        
         playerView.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-        Log.d(TAG, "Initial resizeMode set to FIT")
+        
+        // Aggressively remove any UI elements that might appear
+        playerView.post {
+            removeAllUIElements()
+            
+            // Continuously monitor for any added UI elements
+            playerView.viewTreeObserver.addOnGlobalLayoutListener {
+                removeAllUIElements()
+            }
+        }
+        
+        Log.d(TAG, "PlayerView setup with clean video surface only")
+    }
+    
+    private fun removeAllUIElements() {
+        try {
+            // Use a different approach - hide instead of remove to avoid resource errors
+            for (i in 0 until playerView.childCount) {
+                val child = playerView.getChildAt(i)
+                val className = child.javaClass.simpleName
+                
+                // Keep only essential video rendering components visible
+                val shouldKeep = className.contains("TextureView") || 
+                               className.contains("SurfaceView") ||
+                               className.contains("VideoDecoderGLSurfaceView") ||
+                               className.contains("VideoSurfaceView") ||
+                               className.contains("GLSurfaceView")
+                
+                if (!shouldKeep && child.visibility == View.VISIBLE) {
+                    child.visibility = View.GONE
+                    child.alpha = 0f
+                    // Also try to disable any animations
+                    child.clearAnimation()
+                    Log.d(TAG, "Hidden UI element: $className")
+                }
+                
+                // Special handling for ProgressBar and loading indicators
+                if (child is android.widget.ProgressBar) {
+                    child.visibility = View.GONE
+                    child.alpha = 0f
+                    child.clearAnimation()
+                    Log.d(TAG, "Hidden ProgressBar: $className")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error hiding UI elements: $e")
+        }
+    }
+    
+    private fun hideAllBufferingViews(viewGroup: android.view.ViewGroup) {
+        try {
+            for (i in 0 until viewGroup.childCount) {
+                val child = viewGroup.getChildAt(i)
+                
+                // Check if this view looks like a buffering indicator
+                val resourceName = try {
+                    context.resources.getResourceName(child.id)
+                } catch (e: Exception) {
+                    ""
+                }.lowercase()
+                
+                // Hide views that contain buffering/loading/progress in their name or class
+                val className = child.javaClass.simpleName.lowercase()
+                val packageName = child.javaClass.name.lowercase()
+                
+                val shouldHide = resourceName.contains("buffering") || 
+                               resourceName.contains("loading") || 
+                               resourceName.contains("progress") ||
+                               resourceName.contains("spinner") ||
+                               className.contains("progress") ||
+                               className.contains("buffering") ||
+                               className.contains("loading") ||
+                               className.contains("spinner") ||
+                               className.contains("circular") ||
+                               packageName.contains("progressbar") ||
+                               packageName.contains("spinner") ||
+                               // Target common ExoPlayer buffering views
+                               resourceName.contains("exo_buffering") ||
+                               resourceName.contains("exo_progress") ||
+                               className.contains("exo")
+                
+                if (shouldHide && child.visibility == View.VISIBLE) {
+                    child.visibility = View.INVISIBLE  // Use INVISIBLE instead of GONE to maintain layout
+                    child.alpha = 0f  // Make completely transparent
+                    Log.d(TAG, "Hidden buffering view: $resourceName (${child.javaClass.simpleName})")
+                }
+                
+                // Also hide any views that are circular and might be spinners
+                if (child is android.widget.ProgressBar && child.visibility == View.VISIBLE) {
+                    child.visibility = View.INVISIBLE
+                    child.alpha = 0f
+                    Log.d(TAG, "Hidden ProgressBar: ${child.javaClass.simpleName}")
+                }
+                
+                // Recursively check child view groups
+                if (child is android.view.ViewGroup) {
+                    hideAllBufferingViews(child)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error hiding buffering views: $e")
+        }
+    }
+    
+    private fun setupMediaSession() {
+        try {
+            // Create MediaSession for external controls and audio focus
+            mediaSession = MediaSession.Builder(context, exoPlayer)
+                .build()
+            
+            // MediaSession is automatically active when created - no need to set isActive
+            
+            Log.d(TAG, "MediaSession initialized successfully")
+            
+            // Notify Flutter that MediaSession is ready
+            channel.invokeMethod("onMediaSessionReady", mapOf(
+                "hasAudioFocus" to true,
+                "externalControlsEnabled" to true
+            ))
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize MediaSession: $e")
+        }
+    }
+    
+    private fun setupPictureInPicture() {
+        // Check if Picture-in-Picture is supported
+        isPipSupported = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                val activity = context as? Activity
+                activity?.packageManager?.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE) == true
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not determine PiP support: $e")
+                false
+            }
+        } else {
+            false
+        }
+        
+        Log.d(TAG, "Picture-in-Picture supported: $isPipSupported")
+        
+        // Notify Flutter about PiP support
+        channel.invokeMethod("onPipSupportChanged", mapOf(
+            "supported" to isPipSupported,
+            "androidVersion" to Build.VERSION.SDK_INT
+        ))
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun enterPictureInPictureMode() {
+        val activity = context as? Activity ?: return
+        val params = PictureInPictureParams.Builder()
+            .setAspectRatio(currentVideoAspectRatio)
+            .build()
+        activity.enterPictureInPictureMode(params)
     }
     
     private fun setupPlayerListener() {
         exoPlayer.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                Log.d(TAG, "Sending onPlayingChanged: $isPlaying")
                 channel.invokeMethod("onPlayingChanged", isPlaying)
             }
+            
+            override fun onIsLoadingChanged(isLoading: Boolean) {
+                Log.d(TAG, "Sending onLoadingChanged: $isLoading")
+                
+                // Immediately and aggressively remove all UI elements when loading starts
+                if (isLoading) {
+                    removeAllUIElements()
+                    hideAllBufferingViews(playerView)
+                    
+                    // Also schedule continuous removal during loading
+                    playerView.postDelayed({
+                        removeAllUIElements()
+                        hideAllBufferingViews(playerView)
+                    }, 50) // Very frequent removal during loading
+                }
+                
+                channel.invokeMethod("onLoadingChanged", mapOf("isLoading" to isLoading))
+            }
+            
             override fun onPlaybackStateChanged(playbackState: Int) {
+                when (playbackState) {
+                    Player.STATE_READY -> {
+                        // Preload additional content when ready
+                        exoPlayer.prepare()
+                    }
+                    Player.STATE_BUFFERING -> {
+                        // Aggressively hide buffering views when buffering starts
+                        hideAllBufferingViews(playerView)
+                    }
+                }
+                
                 val stateString = when (playbackState) {
                     Player.STATE_IDLE -> "IDLE"
-                    Player.STATE_BUFFERING -> "BUFFERING"
+                    Player.STATE_BUFFERING -> "BUFFERING" 
                     Player.STATE_READY -> "READY"
                     Player.STATE_ENDED -> "ENDED"
                     else -> "UNKNOWN"
                 }
-                val payload = mapOf(
+                
+                // Always hide buffering views regardless of state
+                hideAllBufferingViews(playerView)
+                
+                channel.invokeMethod("onPlaybackStateChanged", mapOf(
                     "state" to stateString,
                     "isPlaying" to exoPlayer.isPlaying,
                     "isBuffering" to (playbackState == Player.STATE_BUFFERING),
                     "bufferedPercentage" to exoPlayer.bufferedPercentage,
                     "bufferedPosition" to exoPlayer.bufferedPosition
-                )
-                Log.d(TAG, "Sending onPlaybackStateChanged: $payload")
-                channel.invokeMethod("onPlaybackStateChanged", payload)
-                
-                if (playbackState == Player.STATE_READY && !isInitialized) {
-                    isInitialized = true
-                    Log.d(TAG, "Sending onInitialized")
-                    channel.invokeMethod("onInitialized", null)
-                    
-                    // Add delay before track detection to ensure tracks are loaded
-                    Handler(Looper.getMainLooper()).postDelayed({
-                        manuallyDetectTracks()
-                    }, 500) // 500ms delay
-                }
+                ))
             }
             
             override fun onPlayerError(error: PlaybackException) {
-                val errorPayload = mapOf(
-                    "error" to error.message,
-                    "errorCode" to error.errorCode,
-                    "errorType" to when (error.errorCode) {
-                        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> "NETWORK_ERROR"
-                        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND -> "FILE_NOT_FOUND"
-                        PlaybackException.ERROR_CODE_DECODING_FAILED -> "DECODING_ERROR"
-                        PlaybackException.ERROR_CODE_AUDIO_TRACK_INIT_FAILED -> "AUDIO_ERROR"
-                        else -> "UNKNOWN_ERROR"
-                    }
-                )
-                Log.e(TAG, "Sending onError: ${error.message}", error)
-                channel.invokeMethod("onError", errorPayload)
+                Log.e(TAG, "Player error: $error")
+                channel.invokeMethod("onError", mapOf("error" to error.message))
             }
             
             override fun onPositionDiscontinuity(
@@ -921,10 +1113,14 @@ class Media3PlayerView(
                 Log.d(TAG, "onPositionDiscontinuity, reason: $reason. New pos: ${newPosition.positionMs}. Old pos: ${oldPosition.positionMs}")
                 sendPositionUpdate() // Ensure UI updates on seek or playlist transition
             }
-            
-            // The duplicate sendPositionUpdate was removed. The one outside the listener is used by the Handler.
 
             override fun onVideoSizeChanged(videoSize: VideoSize) {
+                // Update aspect ratio for PiP
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    currentVideoAspectRatio = Rational(videoSize.width, videoSize.height)
+                    Log.d(TAG, "Updated video aspect ratio: ${videoSize.width}x${videoSize.height}")
+                }
+                
                 val payload = mapOf(
                     "width" to videoSize.width,
                     "height" to videoSize.height,
@@ -1102,11 +1298,13 @@ class Media3PlayerView(
             when (call.method) {
                 "play" -> {
                     exoPlayer.play()
+                    // MediaSession handles audio focus automatically
                     result.success(null)
                 }
                 
                 "pause" -> {
                     exoPlayer.pause()
+                    // MediaSession remains active for external controls
                     result.success(null)
                 }
                 
@@ -1201,6 +1399,19 @@ class Media3PlayerView(
                     result.success(null)
                 }
                 
+                "enterPictureInPicture" -> {
+                    if (isPipSupported && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        enterPictureInPictureMode()
+                        result.success(true)
+                    } else {
+                        result.success(false)
+                    }
+                }
+                
+                "isPictureInPictureSupported" -> {
+                    result.success(isPipSupported)
+                }
+                
                 "getTracks" -> {
                     val tracks = getTracksFromTrackSelector()
                     result.success(tracks)
@@ -1234,6 +1445,76 @@ class Media3PlayerView(
                 "dispose" -> {
                     dispose()
                     result.success(null)
+                }
+                "addMediaItems" -> {
+                    val mediaItems = call.argument<List<String>>("mediaItems")
+                    if (mediaItems != null) {
+                        addMediaItems(mediaItems)
+                        result.success(null)
+                    } else {
+                        result.error("INVALID_ARGUMENTS", "mediaItems cannot be null", null)
+                    }
+                }
+                "removeMediaItem" -> {
+                    val index = call.argument<Int>("index")
+                    if (index != null) {
+                        removeMediaItem(index)
+                        result.success(null)
+                    } else {
+                        result.error("INVALID_ARGUMENTS", "index cannot be null", null)
+                    }
+                }
+                "seekToNext" -> {
+                    exoPlayer.seekToNext()
+                    result.success(null)
+                }
+                "seekToPrevious" -> {
+                    exoPlayer.seekToPrevious()
+                    result.success(null)
+                }
+                "seekToMediaItem" -> {
+                    val index = call.argument<Int>("index")
+                    if (index != null) {
+                        exoPlayer.seekTo(index, 0)
+                        result.success(null)
+                    } else {
+                        result.error("INVALID_ARGUMENTS", "index cannot be null", null)
+                    }
+                }
+                "clearPlaylist" -> {
+                    exoPlayer.clearMediaItems()
+                    result.success(null)
+                }
+                "getThumbnail" -> {
+                    val position = call.argument<Long>("position")
+                    if (position != null) {
+                        val thumbnail = getThumbnail(position)
+                        if (thumbnail != null) {
+                            result.success(thumbnail)
+                        } else {
+                            result.error("THUMBNAIL_ERROR", "Failed to generate thumbnail", null)
+                        }
+                    } else {
+                        result.error("INVALID_ARGUMENTS", "position cannot be null", null)
+                    }
+                }
+                "preload" -> {
+                    val videoPath = call.argument<String>("videoPath")
+                    if (videoPath != null) {
+                        PlayerPoolManager.preload(context, videoPath)
+                        result.success(null)
+                    } else {
+                        result.error("INVALID_ARGUMENTS", "videoPath cannot be null", null)
+                    }
+                }
+                "releasePlayer" -> {
+                    val videoPath = call.argument<String>("videoPath")
+                    if (videoPath != null) {
+                        PlayerPoolManager.releasePlayer(videoPath)
+                        result.success(null)
+                    } else {
+                        result.error("INVALID_ARGUMENTS", "videoPath cannot be null", null)
+                    }
                 }
                 
                 else -> {
@@ -1287,6 +1568,7 @@ class Media3PlayerView(
     
     private fun loadVideo(videoPath: String, autoPlay: Boolean = true, startPosition: Long? = null) {
         Log.d(TAG, "loadVideo: path=$videoPath, autoPlay=$autoPlay, startPosition=$startPosition")
+        this.currentVideoPath = videoPath
         try {
             val mediaItem = MediaItem.Builder()
                 .setUri(videoPath)
@@ -1318,6 +1600,42 @@ class Media3PlayerView(
         }
     }
     
+    private fun getThumbnail(position: Long): ByteArray? {
+        if (currentVideoPath == null) {
+            return null
+        }
+        return try {
+            val retriever = MediaMetadataRetriever()
+            retriever.setDataSource(currentVideoPath)
+            val bitmap = retriever.getFrameAtTime(position * 1000) // convert ms to us
+            retriever.release()
+
+            if (bitmap != null) {
+                val stream = ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 80, stream)
+                stream.toByteArray()
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error generating thumbnail: ${e.message}")
+            null
+        }
+    }
+
+    private fun addMediaItems(videoPaths: List<String>) {
+        val mediaItems = videoPaths.map { videoPath ->
+            MediaItem.Builder()
+                .setUri(videoPath)
+                .build()
+        }
+        exoPlayer.addMediaItems(mediaItems)
+    }
+
+    private fun removeMediaItem(index: Int) {
+        exoPlayer.removeMediaItem(index)
+    }
+
     // Lifecycle management
     fun onStart() {
         Log.d(TAG, "onStart called")
@@ -1393,7 +1711,7 @@ class Media3PlayerView(
         }
         volumeBroadcastReceiver = null
         
-        exoPlayer.release()
+        currentVideoPath?.let { PlayerPoolManager.releasePlayer(it) }
     }
     
     private fun initializeVolumeObserver() {

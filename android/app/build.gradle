@@ -1,8 +1,15 @@
+
 plugins {
     id "com.android.application"
     id "kotlin-android"
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id "dev.flutter.flutter-gradle-plugin"
+}
+
+def keystorePropertiesFile = rootProject.file("key.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -17,6 +24,17 @@ android {
 
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_11
+    }
+
+    signingConfigs {
+        release {
+            if (keystoreProperties['keyAlias'] != null) {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+                storePassword keystoreProperties['storePassword']
+            }
+        }
     }
 
     defaultConfig {
@@ -34,7 +52,23 @@ android {
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
+            signingConfig signingConfigs.release
+        }
+    }
+
+    configurations.all {
+        resolutionStrategy {
+            force 'androidx.media3:media3-exoplayer:1.4.1'
+            force 'androidx.media3:media3-ui:1.4.1'
+            force 'androidx.media3:media3-session:1.4.1'
+            force 'androidx.media3:media3-common:1.4.1'
+            force 'androidx.media3:media3-datasource:1.4.1'
+            force 'androidx.media3:media3-database:1.4.1'
+            force 'androidx.media3:media3-decoder:1.4.1'
+            force 'androidx.media3:media3-exoplayer-dash:1.4.1'
+            force 'androidx.media3:media3-exoplayer-hls:1.4.1'
+            force 'androidx.media3:media3-exoplayer-smoothstreaming:1.4.1'
+            force 'androidx.media3:media3-exoplayer-rtsp:1.4.1'
         }
     }
 }
@@ -44,18 +78,25 @@ flutter {
 }
 
 dependencies {
-    // Basic Android dependencies for Flutter app
+    // Basic Android dependencies
     implementation 'androidx.core:core:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
-
-    // AndroidX Media3 - Latest stable version
-    implementation 'androidx.media3:media3-exoplayer:1.7.1'
-    implementation 'androidx.media3:media3-ui:1.7.1'
-    implementation 'androidx.media3:media3-session:1.7.1'
-    implementation 'androidx.media3:media3-common:1.7.1'
     
-    // Additional Media3 modules for enhanced functionality
-    implementation 'androidx.media3:media3-exoplayer-dash:1.7.1'
-    implementation 'androidx.media3:media3-exoplayer-hls:1.7.1'
-    implementation 'androidx.media3:media3-exoplayer-smoothstreaming:1.7.1'
+    // Google Play Core (fixes R8 shrinking issues)
+    implementation 'com.google.android.play:core:1.10.3'
+    
+    // Stable Media3 libraries (version 1.4.1)
+    implementation 'androidx.media3:media3-exoplayer:1.4.1'
+    implementation 'androidx.media3:media3-ui:1.4.1'
+    implementation 'androidx.media3:media3-session:1.4.1'
+    implementation 'androidx.media3:media3-common:1.4.1'
+    implementation 'androidx.media3:media3-datasource:1.4.1'
+    implementation 'androidx.media3:media3-database:1.4.1'
+    implementation 'androidx.media3:media3-decoder:1.4.1'
+    
+    // Performance modules
+    implementation 'androidx.media3:media3-exoplayer-dash:1.4.1'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.4.1'
+    implementation 'androidx.media3:media3-exoplayer-smoothstreaming:1.4.1'
+    implementation 'androidx.media3:media3-exoplayer-rtsp:1.4.1'
 }

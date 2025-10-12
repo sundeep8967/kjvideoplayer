@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Flutterapp7</string>
+	<string>i Player</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>flutterapp7</string>
+	<string>iPlayer</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -45,5 +45,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs access to photo library to play videos stored in your device.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs camera access to record videos.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app needs microphone access for video recording features.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>This app needs access to documents to play video files.</string>
 </dict>
 </plist>

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../core/platform/media3_player_controller.dart';
 import 'package:flutter/foundation.dart';
 // Brightness control without external dependency
 import '../../core/platform/media3_player_controller.dart';
@@ -131,6 +132,9 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   Timer? _zoomIndicatorTimer;
   bool _showZoomIndicator = false;
   
+  // Picture-in-Picture state
+  bool _isPipSupported = false;
+  
   @override
   void initState() {
     super.initState();
@@ -142,6 +146,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     _initializePlayer();
     _startControlsTimer();
     _enableWakeLock();
+    _checkPipSupport();
     debugPrint('[INIT] Player widget initialization complete');
   }
   
@@ -204,6 +209,37 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
   void _stopTrackDetectionTimer() {
     _trackDetectionTimer?.cancel();
     _trackDetectionTimer = null;
+  }
+  
+  Future<void> _checkPipSupport() async {
+    if (_controller != null) {
+      _isPipSupported = await _controller!.isPictureInPictureSupported();
+      if (mounted) setState(() {});
+      debugPrint('[PIP] Picture-in-Picture supported: $_isPipSupported');
+    }
+  }
+  
+  Future<void> _enterPictureInPicture() async {
+    if (!_isPipSupported || _controller == null) {
+      debugPrint('[PIP] PiP not supported on this device');
+      return;
+    }
+    
+    bool success = await _controller!.enterPictureInPicture();
+    if (success) {
+      debugPrint('[PIP] Successfully entered Picture-in-Picture mode');
+    } else {
+      debugPrint('[PIP] Failed to enter Picture-in-Picture mode');
+      // Show user feedback
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Picture-in-Picture mode not available'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   /// Safely convert dynamic list to List<Map<String, dynamic>>
@@ -1255,21 +1291,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
             ),
           ),
             
-            // Loading indicator
-            if (!_isInitialized)
-              const Center(
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF007AFF)),
-                ),
-              ),
-            
-            // Buffering indicator (only show after delay to avoid flickering)
-            if (_showBufferingIndicator && _isInitialized)
-              const Center(
-                child: CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF007AFF)),
-                ),
-              ),
+            // Loading and buffering indicators removed - no more blue circular indicators
+            // The video player handles loading/buffering states internally
             
             // Error overlay (only for critical errors)
             if (_error != null && _shouldShowErrorDialog(_error!))
@@ -1556,6 +1579,14 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                   },
                   tooltip: 'Settings',
                 ),
+                if (_isPipSupported)
+                  const SizedBox(width: 16),
+                if (_isPipSupported)
+                  _buildPureIconButton(
+                    icon: Icons.picture_in_picture_alt_outlined,
+                    onPressed: _enterPictureInPicture,
+                    tooltip: 'Picture-in-Picture',
+                  ),
               ],
             ),
           ],
