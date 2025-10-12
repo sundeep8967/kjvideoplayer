@@ -31,3 +31,7 @@
 
 # Add this line for flutter_vlc_player
 -keep class org.videolan.libvlc.** { *; }
+
+# Play Core library rules - suppress warnings for optional Flutter classes
+-dontwarn com.google.android.play.core.**
+-keep class io.flutter.embedding.engine.deferredcomponents.PlayStoreDeferredComponentManager { *; }
