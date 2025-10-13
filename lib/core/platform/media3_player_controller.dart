@@ -26,6 +26,7 @@ class Media3PlayerController {
   final StreamController<Map<String, dynamic>> _tracksController = StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<Map<String, dynamic>> _videoSizeController = StreamController<Map<String, dynamic>>.broadcast();
   final StreamController<double> _systemVolumeController = StreamController<double>.broadcast();
+  final StreamController<Map<String, dynamic>> _nativeButtonController = StreamController<Map<String, dynamic>>.broadcast();
   
   // Getters
   bool get isInitialized => _isInitialized;
@@ -45,6 +46,7 @@ class Media3PlayerController {
   Stream<Map<String, dynamic>> get onTracksChanged => _tracksController.stream;
   Stream<Map<String, dynamic>> get onVideoSizeChanged => _videoSizeController.stream;
   Stream<double> get onSystemVolumeChanged => _systemVolumeController.stream;
+  Stream<Map<String, dynamic>> get onNativeButtonClicked => _nativeButtonController.stream;
   
   Media3PlayerController({required this.viewId}) {
     _channel = MethodChannel('media3_player_$viewId');
@@ -91,6 +93,18 @@ class Media3PlayerController {
           break;
         case 'onSystemVolumeChanged':
           _handleSystemVolumeChanged(call.arguments as Map<dynamic, dynamic>);
+          break;
+        case 'onSubtitleButtonClicked':
+          _handleNativeButtonClick('subtitle', call.arguments);
+          break;
+        case 'onAudioTrackButtonClicked':
+          _handleNativeButtonClick('audioTrack', call.arguments);
+          break;
+        case 'onSettingsButtonClicked':
+          _handleNativeButtonClick('settings', call.arguments);
+          break;
+        case 'onBackButtonClicked':
+          _handleNativeButtonClick('back', call.arguments);
           break;
         default:
           debugPrint('[Media3PlayerController] Unhandled native method: ${call.method}');
@@ -441,6 +455,14 @@ class Media3PlayerController {
     _systemVolumeController.add(volume);
   }
   
+  void _handleNativeButtonClick(String buttonType, dynamic data) {
+    debugPrint('[Media3PlayerController] Native button clicked: $buttonType');
+    _nativeButtonController.add({
+      'buttonType': buttonType,
+      'data': data,
+    });
+  }
+  
   /// Safe audio track selection with comprehensive validation
   Future<void> selectAudioTrack(int index) async {
     try {
@@ -568,6 +590,17 @@ class Media3PlayerController {
       _errorController.add(_error);
     }
   }
+  
+  /// Set the video title in native UI overlay
+  Future<void> setVideoTitle(String title) async {
+    debugPrint('[Media3PlayerController] Setting video title: $title');
+    try {
+      await _channel.invokeMethod('setVideoTitle', {'title': title});
+      debugPrint('[Media3PlayerController] Video title set successfully');
+    } catch (e) {
+      debugPrint('[Media3PlayerController] Error setting video title: $e');
+    }
+  }
 
   /// Select subtitle track by index
   Future<void> setSubtitleTrack(int index) async {
@@ -656,6 +689,27 @@ class Media3PlayerController {
     }
   }
 
+  /// Picture-in-Picture functionality
+  Future<bool> isPictureInPictureSupported() async {
+    try {
+      final result = await _channel.invokeMethod('isPictureInPictureSupported');
+      return result ?? false;
+    } catch (e) {
+      debugPrint('Error checking PiP support: $e');
+      return false;
+    }
+  }
+  
+  Future<bool> enterPictureInPicture() async {
+    try {
+      final result = await _channel.invokeMethod('enterPictureInPicture');
+      return result ?? false;
+    } catch (e) {
+      debugPrint('Error entering PiP: $e');
+      return false;
+    }
+  }
+
   /// Check audio tracks availability and debug info
   Future<void> checkAudioTracks() async {
     debugPrint('Checking audio tracks...');
@@ -697,6 +751,116 @@ class Media3PlayerController {
     }
   }
 
+  /// Add a list of media items to the playlist
+  Future<void> addMediaItems(List<String> mediaItems) async {
+    try {
+      await _channel.invokeMethod('addMediaItems', {'mediaItems': mediaItems});
+    } catch (e) {
+      _error = e.toString();
+      _errorController.add(_error);
+    }
+  }
+
+  /// Remove a media item from the playlist at a specific index
+  Future<void> removeMediaItem(int index) async {
+    try {
+      await _channel.invokeMethod('removeMediaItem', {'index': index});
+    } catch (e) {
+      _error = e.toString();
+      _errorController.add(_error);
+    }
+  }
+
+  /// Seek to the next media item in the playlist
+  Future<void> seekToNext() async {
+    try {
+      await _channel.invokeMethod('seekToNext');
+    } catch (e) {
+      _error = e.toString();
+      _errorController.add(_error);
+    }
+  }
+
+  /// Seek to the previous media item in the playlist
+  Future<void> seekToPrevious() async {
+    try {
+      await _channel.invokeMethod('seekToPrevious');
+    } catch (e) {
+      _error = e.toString();
+      _errorController.add(_error);
+    }
+  }
+
+  /// Seek to a specific media item in the playlist by index
+  Future<void> seekToMediaItem(int index) async {
+    try {
+      await _channel.invokeMethod('seekToMediaItem', {'index': index});
+    } catch (e) {
+      _error = e.toString();
+      _errorController.add(_error);
+    }
+  }
+
+  /// Clear the entire playlist
+  Future<void> clearPlaylist() async {
+    try {
+      await _channel.invokeMethod('clearPlaylist');
+    } catch (e) {
+      _error = e.toString();
+      _errorController.add(_error);
+    }
+  }
+
+  /// Get a thumbnail from the video at a specific position.
+  /// Returns a Uint8List of the image data (JPEG).
+  Future<Uint8List?> getThumbnail(Duration position) async {
+    try {
+      final thumbnail = await _channel.invokeMethod<Uint8List>(
+        'getThumbnail', 
+        {'position': position.inMilliseconds},
+      );
+      return thumbnail;
+    } catch (e) {
+      _error = e.toString();
+      _errorController.add(_error);
+      return null;
+    }
+  }
+
+  /// Preload a video to be played in the future.
+  Future<void> preload(String videoPath) async {
+    try {
+      await _channel.invokeMethod('preload', {'videoPath': videoPath});
+    } catch (e) {
+      _error = e.toString();
+      _errorController.add(_error);
+    }
+  }
+
+  /// Release a player back to the pool.
+  Future<void> releasePlayer(String videoPath) async {
+    try {
+      await _channel.invokeMethod('releasePlayer', {'videoPath': videoPath});
+    } catch (e) {
+      _error = e.toString();
+      _errorController.add(_error);
+    }
+  }
+
+  /// Enter Picture-in-Picture mode.
+  /// This will only work on Android O and above.
+  /// Returns true if the request to enter PiP was successful.
+  Future<bool> enterPictureInPictureMode() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('enterPictureInPicture');
+      return result ?? false;
+    } catch (e) {
+      _error = e.toString();
+      _errorController.add(_error);
+      return false;
+    }
+  }
+
   /// Dispose the controller
   void dispose() {
     _playingController.close();
@@ -706,6 +870,7 @@ class Media3PlayerController {
     _initializedController.close();
     _performanceController.close();
     _tracksController.close();
+    _nativeButtonController.close();
     // Dispose the native player
     debugPrint('[Media3PlayerController] Invoking native dispose()');
     _channel.invokeMethod('dispose').catchError((e) {

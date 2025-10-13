@@ -18,6 +18,9 @@ class ThumbnailService {
         final cachedPath = _thumbnailCache[videoPath]!;
         if (await File(cachedPath).exists()) {
           return cachedPath;
+        } else {
+          // Remove invalid cache entry
+          _thumbnailCache.remove(videoPath);
         }
       }
 
@@ -32,6 +35,12 @@ class ThumbnailService {
       final fileSize = await videoFile.length();
       if (fileSize < 1024) { // Less than 1KB
         print('Video file too small (likely incomplete): $videoPath');
+        return null;
+      }
+
+      // Check if file is actually a video by extension
+      if (!isVideoSupported(videoPath)) {
+        print('Unsupported video format: $videoPath');
         return null;
       }
 
@@ -93,9 +102,13 @@ class ThumbnailService {
         return thumbnailPath;
       } else {
         print('All thumbnail generation strategies failed for: $videoPath');
+        // Cache the failure to avoid repeated attempts
+        _thumbnailCache[videoPath] = '';
       }
     } catch (e) {
       print('Error generating thumbnail for $videoPath: $e');
+      // Cache the failure
+      _thumbnailCache[videoPath] = '';
     }
     
     return null;
@@ -185,9 +198,61 @@ class ThumbnailService {
     return supportedFormats.contains(extension);
   }
 
+  /// Generate thumbnails for folder (only first few videos for efficiency)
+  Future<List<String?>> generateFolderThumbnails(List<String> videoPaths, {int maxThumbnails = 4}) async {
+    List<String?> thumbnails = [];
+    
+    // Only generate thumbnails for the first few videos to improve performance
+    final videosToProcess = videoPaths.take(maxThumbnails).toList();
+    
+    for (final videoPath in videosToProcess) {
+      try {
+        final thumbnail = await generateThumbnail(videoPath);
+        thumbnails.add(thumbnail);
+        
+        // If we get a successful thumbnail, we can break early for single thumbnail display
+        if (thumbnail != null && maxThumbnails == 1) {
+          break;
+        }
+      } catch (e) {
+        print('Error generating folder thumbnail for $videoPath: $e');
+        thumbnails.add(null);
+      }
+    }
+    
+    return thumbnails;
+  }
+
+  /// Get the best thumbnail from a folder (first available)
+  Future<String?> getFolderThumbnail(List<String> videoPaths) async {
+    // Try to find a cached thumbnail first
+    for (final videoPath in videoPaths) {
+      final cached = getCachedThumbnail(videoPath);
+      if (cached != null && cached.isNotEmpty && await File(cached).exists()) {
+        return cached;
+      }
+    }
+    
+    // Generate thumbnail for the first video that works
+    for (final videoPath in videoPaths) {
+      try {
+        final thumbnail = await generateThumbnail(videoPath);
+        if (thumbnail != null) {
+          return thumbnail;
+        }
+      } catch (e) {
+        print('Error generating thumbnail for folder video $videoPath: $e');
+        continue;
+      }
+    }
+    
+    return null;
+  }
+
   /// Get cached thumbnail path
   String? getCachedThumbnail(String videoPath) {
-    return _thumbnailCache[videoPath];
+    final cached = _thumbnailCache[videoPath];
+    return (cached != null && cached.isNotEmpty) ? cached : null;
   }
 
   /// Clear thumbnail cache

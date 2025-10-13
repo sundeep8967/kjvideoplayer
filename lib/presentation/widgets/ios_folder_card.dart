@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
-import 'dart:async';
 import '../../core/utils/haptic_feedback_helper.dart';
 import '../../data/models/video_model.dart';
 import '../../data/services/thumbnail_service.dart';
@@ -29,97 +28,53 @@ class IOSFolderCard extends StatefulWidget {
   State<IOSFolderCard> createState() => _IOSFolderCardState();
 }
 
-class _IOSFolderCardState extends State<IOSFolderCard>
-    with TickerProviderStateMixin {
+class _IOSFolderCardState extends State<IOSFolderCard> {
   final ThumbnailService _thumbnailService = ThumbnailService();
-  List<String?> _thumbnailPaths = [];
-  bool _isLoadingThumbnails = false;
-  
-  // Animation for cycling thumbnails
-  late AnimationController _cycleController;
-  late Animation<double> _fadeAnimation;
-  Timer? _cycleTimer;
-  int _currentThumbnailSet = 0;
+  String? _folderThumbnail;
+  bool _isLoadingThumbnail = false;
+  bool _thumbnailLoadFailed = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeAnimations();
-    _loadFolderThumbnails();
+    _loadFolderThumbnail();
   }
 
-  void _initializeAnimations() {
-    _cycleController = AnimationController(
-      duration: const Duration(milliseconds: 500),
-      vsync: this,
-    );
-    
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _cycleController,
-      curve: Curves.easeInOut,
-    ));
-  }
-
-  Future<void> _loadFolderThumbnails() async {
+  Future<void> _loadFolderThumbnail() async {
     if (widget.videos.isEmpty) return;
     
     setState(() {
-      _isLoadingThumbnails = true;
+      _isLoadingThumbnail = true;
+      _thumbnailLoadFailed = false;
     });
 
-    // Load thumbnails for all videos in the folder
-    List<String?> thumbnails = [];
-
-    for (final video in widget.videos) {
-      try {
-        final thumbnailPath = await _thumbnailService.generateThumbnail(video.path);
-        thumbnails.add(thumbnailPath);
-      } catch (e) {
-        thumbnails.add(null);
+    try {
+      // Get video paths from the folder
+      final videoPaths = widget.videos.map((video) => video.path).toList();
+      
+      // Get the best thumbnail for this folder
+      final thumbnailPath = await _thumbnailService.getFolderThumbnail(videoPaths);
+      
+      if (mounted) {
+        setState(() {
+          _folderThumbnail = thumbnailPath;
+          _isLoadingThumbnail = false;
+          _thumbnailLoadFailed = thumbnailPath == null;
+        });
+      }
+    } catch (e) {
+      print('Error loading folder thumbnail: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingThumbnail = false;
+          _thumbnailLoadFailed = true;
+        });
       }
     }
-
-    if (mounted) {
-      setState(() {
-        _thumbnailPaths = thumbnails;
-        _isLoadingThumbnails = false;
-      });
-      
-      // Start the cycling animation after thumbnails are loaded
-      if (_thumbnailPaths.isNotEmpty) {
-        _startThumbnailCycling();
-      }
-    }
-  }
-
-  void _startThumbnailCycling() {
-    if (widget.videos.length <= 1) return; // No need to cycle if only 1 video
-    
-    _cycleController.forward();
-    
-    _cycleTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-      
-      setState(() {
-        _currentThumbnailSet = (_currentThumbnailSet + 1) % _thumbnailPaths.length;
-      });
-      
-      // Restart fade animation
-      _cycleController.reset();
-      _cycleController.forward();
-    });
   }
 
   @override
   void dispose() {
-    _cycleTimer?.cancel();
-    _cycleController.dispose();
     super.dispose();
   }
 
@@ -258,7 +213,7 @@ class _IOSFolderCardState extends State<IOSFolderCard>
   }
 
   Widget _buildThumbnailGrid() {
-    if (_isLoadingThumbnails) {
+    if (_isLoadingThumbnail) {
       return Container(
         color: const Color(0xFFF2F2F7),
         child: const Center(
@@ -274,54 +229,73 @@ class _IOSFolderCardState extends State<IOSFolderCard>
       );
     }
 
-    if (_thumbnailPaths.isEmpty || widget.videos.isEmpty) {
+    if (_folderThumbnail == null || _thumbnailLoadFailed) {
       return _buildDefaultThumbnailGrid();
     }
 
-    // Show single cycling thumbnail
-    return AnimatedBuilder(
-      animation: _fadeAnimation,
-      builder: (context, child) {
-        return Opacity(
-          opacity: _fadeAnimation.value,
-          child: Container(
-            width: double.infinity,
-            height: double.infinity,
-            decoration: const BoxDecoration(
-              color: Color(0xFFF2F2F7),
-            ),
-            child: _thumbnailPaths[_currentThumbnailSet] != null
-                ? Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Image.file(
-                        File(_thumbnailPaths[_currentThumbnailSet]!),
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return _buildDefaultThumbnailGrid();
-                        },
-                      ),
-                      // Play overlay
-                      Center(
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(
-                            color: Colors.black54,
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.play_arrow,
-                            size: 24,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                : _buildDefaultThumbnailGrid(),
+    // Show folder thumbnail
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: const BoxDecoration(
+        color: Color(0xFFF2F2F7),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.file(
+            File(_folderThumbnail!),
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              // If image fails to load, show default and mark as failed
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() {
+                    _thumbnailLoadFailed = true;
+                    _folderThumbnail = null;
+                  });
+                }
+              });
+              return _buildDefaultThumbnailGrid();
+            },
           ),
-        );
-      },
+          // Play overlay with folder indicator
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(
+                color: Colors.black54,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.folder_open,
+                size: 24,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          // Video count indicator in top-right
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${widget.videoCount}',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

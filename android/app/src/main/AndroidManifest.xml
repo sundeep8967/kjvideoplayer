@@ -18,7 +18,10 @@
         android:requestLegacyExternalStorage="true"
         android:enableOnBackInvokedCallback="true"
         android:hardwareAccelerated="true"
-        android:largeHeap="true"> <!-- Add this line -->
+        android:largeHeap="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
 
         <activity
             android:name=".MainActivity"
@@ -28,7 +31,14 @@
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize">
+            android:supportsPictureInPicture="true"
+            android:windowSoftInputMode="adjustResize"
+            android:screenOrientation="unspecified"
+            android:resizeableActivity="true">
+            
+            <!-- Performance optimizations -->
+            <meta-data android:name="android.max_aspect" android:value="2.1" />
+            <meta-data android:name="android.notch_support" android:value="true" />
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user
                  while the Flutter UI initializes. After that, this theme continues

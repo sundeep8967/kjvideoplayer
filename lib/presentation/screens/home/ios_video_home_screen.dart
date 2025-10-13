@@ -45,10 +45,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
   List<VideoModel> _filteredVideos = [];
   List<String> _filteredFolders = [];
   
-  late AnimationController _animationController;
-  late AnimationController _tabAnimationController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
+  late PageController _pageController;
 
   // iOS-style colors
   static const Color iosBlue = Color(0xFF007AFF);
@@ -64,49 +61,22 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     
-    // Use system default notification bar
+    // Initialize system UI with app theme colors
     SystemUIHelper.initializeSystemUI();
+    SystemUIHelper.setAppThemeUI();
     
-    _initializeAnimations();
+    _pageController = PageController(initialPage: _selectedTabIndex);
     _loadSavedViewMode();
     _checkAndRequestStoragePermission();
     _loadRecentFiles();
     _loadAllVideos();
   }
 
-  void _initializeAnimations() {
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 600),
-      vsync: this,
-    );
-    
-    _tabAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-    
-    _fadeAnimation = Tween<double>(
-      begin: 0.0,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOut,
-    ));
-    
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOutCubic,
-    ));
-  }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _animationController.dispose();
-    _tabAnimationController.dispose();
+    _pageController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -158,7 +128,6 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
       
       if (_hasPermission) {
         await _loadAllVideos();
-        _animationController.forward();
       }
     } catch (e) {
       print('Error requesting storage permission: $e');
@@ -409,16 +378,24 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
   }
 
   void _playVideo(String videoPath, String videoTitle) async {
+    // Find the actual video from _allVideos to get correct metadata
+    final video = _allVideos.firstWhere(
+      (v) => v.path == videoPath,
+      orElse: () => VideoModel(
+        path: videoPath,
+        name: videoTitle,
+        displayName: videoTitle,
+        size: 0,
+        dateModified: DateTime.now(),
+      ),
+    );
+    
     // Add to recent files
     final storageService = StorageService();
-    final video = VideoModel(
-      path: videoPath,
-      name: videoTitle,
-      displayName: videoTitle,
-      size: 0,
-      dateModified: DateTime.now(),
-    );
     await storageService.addToRecent(video);
+    
+    // Update recent files list to refresh Continue Watching
+    await _loadRecentFiles();
     
     // Navigate to video player
     if (mounted) {
@@ -443,7 +420,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
             Flexible(
               flex: 0,
               child: Container(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -508,10 +485,10 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                     ],
                   ),
                   
-                  const SizedBox(height: 20),
                   
                   // Search bar (if searching)
                   if (_isSearching) ...[
+                    const SizedBox(height: 16),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
@@ -560,6 +537,8 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                       ),
                     ),
                     const SizedBox(height: 16),
+                  ] else ...[
+                    const SizedBox(height: 16),
                   ],
                   
                   // iOS-style segmented control
@@ -581,12 +560,53 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
               ),
             ),
             
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             
-            // Content
+            // Content with swipe navigation
             Expanded(
-              child: _buildContent(),
+              child: PageView.builder(
+                controller: _pageController,
+                physics: const BouncingScrollPhysics(),
+                itemCount: 3,
+                onPageChanged: (index) {
+                  setState(() {
+                    _selectedTabIndex = index;
+                  });
+                  HapticFeedbackHelper.lightImpact();
+                },
+                itemBuilder: (context, index) {
+                  switch (index) {
+                    case 0:
+                      return _buildFoldersContent();
+                    case 1:
+                      return _buildAllVideosContent();
+                    case 2:
+                      return _buildRecentContent();
+                    default:
+                      return _buildFoldersContent();
+                  }
+                },
+              ),
             ),
+            
+            // Continue Watching section at bottom
+            if (_recentFiles.isNotEmpty && !_isSearching)
+              SafeArea(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: iosSystemBackground,
+                    border: Border(
+                      top: BorderSide(
+                        color: iosLightGray,
+                        width: 0.5,
+                      ),
+                    ),
+                  ),
+                  child: _buildLastPlayedVideo(),
+                ),
+              ),
+            
           ],
         ),
       ),
@@ -603,6 +623,11 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
           setState(() {
             _selectedTabIndex = index;
           });
+          _pageController.animateToPage(
+            index,
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+          );
         },
         child: Container(
           margin: const EdgeInsets.all(2),
@@ -632,36 +657,118 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     );
   }
 
-  Widget _buildContent() {
-    if (_isLoading) {
-      return const Center(
+
+  Widget _buildFoldersContent() {
+    if (_isLoading) return _buildLoadingContent();
+    if (!_hasPermission) return _buildPermissionRequest();
+    
+    return _buildFoldersGrid();
+  }
+
+  Widget _buildAllVideosContent() {
+    if (_isLoading) return _buildLoadingContent();
+    if (!_hasPermission) return _buildPermissionRequest();
+    
+    // All Videos tab should show all videos, not filtered by search when not searching
+    final videosToShow = _searchQuery.isEmpty ? _allVideos : _filteredVideos;
+    
+    return _buildVideoContentView(videosToShow);
+  }
+
+  Widget _buildRecentContent() {
+    if (_isLoading) return _buildLoadingContent();
+    if (!_hasPermission) return _buildPermissionRequest();
+    
+    // Recent tab should show only recent videos in the order they were played
+    final recentVideos = _recentFiles.map((path) {
+      return _allVideos.firstWhere(
+        (video) => video.path == path,
+        orElse: () => VideoModel(
+          path: path,
+          name: path.split('/').last,
+          displayName: _getDisplayName(path),
+          size: 0,
+          dateModified: DateTime.now(),
+        ),
+      );
+    }).toList();
+    
+    final videosToShow = _searchQuery.isEmpty 
+      ? recentVideos 
+      : recentVideos.where((video) =>
+          video.displayName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          video.name.toLowerCase().contains(_searchQuery.toLowerCase())
+        ).toList();
+    
+    return _buildVideoContentView(videosToShow);
+  }
+
+  Widget _buildLoadingContent() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text(
+            'Scanning for videos...',
+            style: TextStyle(
+              fontSize: 16,
+              color: iosGray,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVideoContentView(List<VideoModel> videos) {
+    if (videos.isEmpty) {
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
+            Icon(
+              _searchQuery.isNotEmpty ? Icons.search_off : Icons.video_library_outlined,
+              size: 64,
+              color: iosGray,
+            ),
+            const SizedBox(height: 16),
             Text(
-              'Scanning for videos...',
+              _searchQuery.isNotEmpty ? 'No videos found for "$_searchQuery"' : 'No videos found',
               style: TextStyle(
-                fontSize: 16,
+                fontSize: 18,
+                color: iosSecondaryLabel,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _searchQuery.isNotEmpty 
+                ? 'Try a different search term'
+                : 'Pull down to refresh and scan for videos',
+              style: TextStyle(
+                fontSize: 14,
                 color: iosGray,
               ),
+              textAlign: TextAlign.center,
             ),
           ],
         ),
       );
     }
     
-    if (!_hasPermission) {
-      return _buildPermissionRequest();
-    }
-    
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: SlideTransition(
-        position: _slideAnimation,
-        child: _buildVideoGrid(),
-      ),
+    return RefreshIndicator(
+      onRefresh: () async {
+        HapticFeedbackHelper.lightImpact();
+        await _loadAllVideos();
+        HapticFeedbackHelper.success();
+      },
+      color: const Color(0xFF007AFF),
+      backgroundColor: Colors.white,
+      strokeWidth: 2.5,
+      child: _buildVideoView(videos),
     );
   }
 
@@ -725,86 +832,30 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                 ),
               ),
             ),
+            
+            // Continue Watching section at bottom
+            if (_recentFiles.isNotEmpty && !_isSearching)
+              SafeArea(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: iosSystemBackground,
+                    border: Border(
+                      top: BorderSide(
+                        color: iosLightGray,
+                        width: 0.5,
+                      ),
+                    ),
+                  ),
+                  child: _buildLastPlayedVideo(),
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildVideoGrid() {
-    if (_selectedTabIndex == 0) {
-      // Folders view
-      return _buildFoldersGrid();
-    }
-    
-    List<VideoModel> videosToShow;
-    
-    switch (_selectedTabIndex) {
-      case 1: // All Videos
-        videosToShow = _filteredVideos;
-        break;
-      case 2: // Recent
-        final recentVideos = _allVideos.where((video) => 
-          _recentFiles.contains(video.path)).toList();
-        videosToShow = _searchQuery.isEmpty 
-          ? recentVideos 
-          : recentVideos.where((video) =>
-              video.displayName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-              video.name.toLowerCase().contains(_searchQuery.toLowerCase())
-            ).toList();
-        break;
-      default:
-        videosToShow = _filteredVideos;
-    }
-    
-    if (videosToShow.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              _searchQuery.isNotEmpty ? Icons.search_off : Icons.video_library_outlined,
-              size: 64,
-              color: iosGray,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              _searchQuery.isNotEmpty ? 'No videos found for "$_searchQuery"' : 'No videos found',
-              style: TextStyle(
-                fontSize: 18,
-                color: iosSecondaryLabel,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              _searchQuery.isNotEmpty 
-                ? 'Try a different search term'
-                : 'Pull down to refresh and scan for videos',
-              style: TextStyle(
-                fontSize: 14,
-                color: iosGray,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      );
-    }
-    
-    return RefreshIndicator(
-      onRefresh: () async {
-        HapticFeedbackHelper.lightImpact();
-        await _loadAllVideos();
-        HapticFeedbackHelper.success();
-      },
-      color: const Color(0xFF007AFF),
-      backgroundColor: Colors.white,
-      strokeWidth: 2.5,
-      child: _buildVideoView(videosToShow),
-    );
-  }
 
   Widget _buildVideoGridView(List<VideoModel> videos) {
     return GridView.builder(
@@ -910,7 +961,8 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
   }
 
   Widget _buildFoldersGrid() {
-    final foldersToShow = _filteredFolders;
+    // This method should only be called for Folders tab
+    final foldersToShow = _searchQuery.isEmpty ? _folderNames : _filteredFolders;
     
     if (foldersToShow.isEmpty) {
       return Center(
@@ -1120,6 +1172,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     }
 
     return TinderVideoCards(
+      key: ValueKey('tinder_videos_${_selectedTabIndex}_${videos.length}'),
       videos: videos,
       onVideoTap: (video) => _playVideo(video.path, video.displayName),
       onFavorite: _addToFavorites,
@@ -1158,6 +1211,148 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
       folders: folders,
       folderVideos: _folderVideos,
       onFolderTap: _navigateToFolder,
+    );
+  }
+
+  Widget _buildLastPlayedVideo() {
+    if (_recentFiles.isEmpty) return const SizedBox.shrink();
+    
+    // Get the most recent video (first in the recent files list)
+    final lastVideoPath = _recentFiles.first;
+    final lastVideo = _allVideos.firstWhere(
+      (video) => video.path == lastVideoPath,
+      orElse: () => _allVideos.isNotEmpty ? _allVideos.first : VideoModel(
+        path: lastVideoPath,
+        name: lastVideoPath.split('/').last,
+        displayName: _getDisplayName(lastVideoPath),
+        size: 0,
+        dateModified: DateTime.now(),
+      ),
+    );
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12, bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: GestureDetector(
+        onTap: () => _playVideo(lastVideo.path, lastVideo.displayName),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: iosLightGray,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              // Thumbnail
+              Container(
+                width: 60,
+                height: 40,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      VideoListThumbnail(
+                        key: ValueKey(lastVideo.path),
+                        video: lastVideo,
+                        size: 40,
+                      ),
+                      Center(
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: iosBlue,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: iosBlue.withOpacity(0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.play_arrow,
+                            color: Colors.white,
+                            size: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Video info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Continue Watching',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: iosGray,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      lastVideo.displayName,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: iosLabel,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              // Central Play Button
+              Container(
+                width: 36,
+                height: 36,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: iosBlue,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: iosBlue.withOpacity(0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.play_arrow,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              // Arrow
+              Icon(
+                Icons.arrow_forward_ios,
+                size: 16,
+                color: iosGray,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
