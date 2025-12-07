@@ -211,6 +211,8 @@ class PlayerBottomControls extends StatefulWidget {
   final bool isPlaying;
   final VoidCallback onPlayPause;
   final VoidCallback onSeekForward; // Added for skip button
+  final VoidCallback? onNext;
+  final VoidCallback? onPrevious;
   final VoidCallback onSettings; // Added for settings button
 
   const PlayerBottomControls({
@@ -223,6 +225,8 @@ class PlayerBottomControls extends StatefulWidget {
     required this.isPlaying,
     required this.onPlayPause,
     required this.onSeekForward,
+    this.onNext,
+    this.onPrevious,
     required this.onSettings,
   });
 
@@ -273,47 +277,6 @@ class _PlayerBottomControlsState extends State<PlayerBottomControls> {
               behavior: HitTestBehavior.opaque,
               child: Row(
                 children: [
-                // Skip Backward 15s
-                GestureDetector(
-                  onTap: () {
-                    // Assuming onSeekForward is actually a generic seek or we need a backward callback
-                    // Since we only have onSeekForward passed in the widget, we might need to update the widget definition
-                    // But looking at previous code, we had onSeekBackward in CenterControls.
-                    // Let's check if we can use onSeek with calculation or if we need to add onSeekBackward to this widget.
-                    // For now, I'll use the onSeek callback with current position - 15s.
-                    final newPos = position - const Duration(seconds: 15);
-                    widget.onSeek(newPos < Duration.zero ? Duration.zero : newPos);
-                  },
-                  child: const Icon(
-                    CupertinoIcons.gobackward_15,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 20),
-
-                // Play/Pause
-                GestureDetector(
-                  onTap: widget.onPlayPause,
-                  child: Icon(
-                    widget.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
-                    color: Colors.white,
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(width: 20),
-                
-                // Skip Forward 15s
-                GestureDetector(
-                  onTap: widget.onSeekForward,
-                  child: const Icon(
-                    CupertinoIcons.goforward_15,
-                    color: Colors.white,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 20),
-                
                 // Current Time
                 Text(
                   _formatDuration(position),
@@ -386,14 +349,76 @@ class _PlayerBottomControlsState extends State<PlayerBottomControls> {
                     fontFamily: '.SF Pro Text',
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 20),
+
+                // Previous Button
+                if (widget.onPrevious != null) ...[
+                  GestureDetector(
+                    onTap: widget.onPrevious,
+                    child: const Icon(
+                      CupertinoIcons.backward_end_fill,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 20),
+                ],
+
+                // Skip Backward 15s
+                GestureDetector(
+                  onTap: () {
+                    final newPos = position - const Duration(seconds: 15);
+                    widget.onSeek(newPos < Duration.zero ? Duration.zero : newPos);
+                  },
+                  child: const Icon(
+                    CupertinoIcons.gobackward_15,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 20),
+
+                // Play/Pause
+                GestureDetector(
+                  onTap: widget.onPlayPause,
+                  child: Icon(
+                    widget.isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(width: 20),
+                
+                // Skip Forward 15s
+                GestureDetector(
+                  onTap: widget.onSeekForward,
+                  child: const Icon(
+                    CupertinoIcons.goforward_15,
+                    color: Colors.white,
+                    size: 22,
+                  ),
+                ),
+                
+                // Next Button
+                if (widget.onNext != null) ...[
+                  const SizedBox(width: 20),
+                  GestureDetector(
+                    onTap: widget.onNext,
+                    child: const Icon(
+                      CupertinoIcons.forward_end_fill,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 20),
                 
                 // Settings (Three Dots)
                 GestureDetector(
                   onTap: widget.onSettings,
                   behavior: HitTestBehavior.opaque,
                   child: Container(
-                    padding: const EdgeInsets.all(8), // Increase hit area
+                    padding: const EdgeInsets.all(8),
                     child: const Icon(
                       CupertinoIcons.ellipsis,
                       color: Colors.white,

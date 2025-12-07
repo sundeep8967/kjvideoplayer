@@ -9,6 +9,9 @@ class VideoPlayerWidget extends StatelessWidget {
   final VoidCallback? onBack;
   final Function(Duration)? onPositionChanged;
   final Function(Duration)? onBookmarkAdded;
+  final VoidCallback? onNext;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onVideoCompleted;
 
   const VideoPlayerWidget({
     super.key,
@@ -18,6 +21,9 @@ class VideoPlayerWidget extends StatelessWidget {
     this.onBack,
     this.onPositionChanged,
     this.onBookmarkAdded,
+    this.onNext,
+    this.onPrevious,
+    this.onVideoCompleted,
   });
 
   @override
@@ -31,6 +37,9 @@ class VideoPlayerWidget extends StatelessWidget {
       onBack: onBack,
       onPositionChanged: onPositionChanged,
       onBookmarkAdded: onBookmarkAdded,
+      onNext: onNext,
+      onPrevious: onPrevious,
+      onVideoCompleted: onVideoCompleted,
       showControls: true,
     );
   }

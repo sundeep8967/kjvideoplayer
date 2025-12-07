@@ -300,24 +300,22 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
         IOSFolderScreen(
           folderName: folderName,
           videos: folderVideos,
-          onVideoTap: _playVideo,
+          onVideoTap: (videoPath, videoTitle) {
+            // Find index of this video in folder videos
+            final index = folderVideos.indexWhere((v) => v.path == videoPath);
+            if (index != -1) {
+              _playVideo(folderVideos, index);
+            }
+          },
         ),
       ),
     );
   }
 
-  void _playVideo(String videoPath, String videoTitle) async {
-    // Find the actual video from _allVideos to get correct metadata
-    final video = _allVideos.firstWhere(
-      (v) => v.path == videoPath,
-      orElse: () => VideoModel(
-        path: videoPath,
-        name: videoTitle,
-        displayName: videoTitle,
-        size: 0,
-        dateModified: DateTime.now(),
-      ),
-    );
+  void _playVideo(List<VideoModel> playlist, int index) async {
+    if (index < 0 || index >= playlist.length) return;
+    
+    final video = playlist[index];
     
     // Add to recent files
     final storageService = StorageService();
@@ -331,7 +329,10 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
       Navigator.push(
         context,
         IOSPageTransitions.slideFromRight(
-          VideoPlayerScreen(video: video),
+          VideoPlayerScreen(
+            playlist: playlist,
+            initialIndex: index,
+          ),
         ),
       );
     }
@@ -803,7 +804,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
         return IOSVideoThumbnail(
           key: ValueKey(video.path), // Ensure proper widget recycling
           video: video,
-          onTap: () => _playVideo(video.path, video.displayName),
+          onTap: () => _playVideo(videos, index),
           onFavorite: () => _addToFavorites(video),
           onShare: () => _shareVideo(video),
           onDelete: () => _deleteVideo(video),
@@ -882,7 +883,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
                 ],
               ),
             ),
-            onTap: () => _playVideo(video.path, video.displayName),
+            onTap: () => _playVideo(videos, index),
           ),
         );
       },
@@ -1103,7 +1104,12 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     return TinderVideoCards(
       key: ValueKey('tinder_videos_${_selectedTabIndex}_${videos.length}'),
       videos: videos,
-      onVideoTap: (video) => _playVideo(video.path, video.displayName),
+      onVideoTap: (video) {
+        final index = videos.indexOf(video);
+        if (index != -1) {
+          _playVideo(videos, index);
+        }
+      },
       onFavorite: _addToFavorites,
       onShare: _shareVideo,
       onDelete: _deleteVideo,
@@ -1163,7 +1169,7 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
       margin: const EdgeInsets.only(top: 12, bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: GestureDetector(
-        onTap: () => _playVideo(lastVideo.path, lastVideo.displayName),
+        onTap: () => _playVideo([lastVideo], 0),
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(

@@ -5,7 +5,7 @@ import '../../widgets/ios_video_thumbnail.dart';
 class IOSFolderScreen extends StatelessWidget {
   final String folderName;
   final List<VideoModel> videos;
-  final Function(String, String) onVideoTap;
+  final Function(String, String) onVideoTap; // Keeping signature same for now, but parent handles logic
 
   const IOSFolderScreen({
     super.key,

@@ -23,6 +23,9 @@ class Media3PlayerWidget extends StatefulWidget {
   final VoidCallback? onBack;
   final Function(Duration)? onPositionChanged;
   final Function(Duration)? onBookmarkAdded;
+  final VoidCallback? onNext;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onVideoCompleted;
   final bool showControls;
 
   const Media3PlayerWidget({
@@ -34,6 +37,9 @@ class Media3PlayerWidget extends StatefulWidget {
     this.onBack,
     this.onPositionChanged,
     this.onBookmarkAdded,
+    this.onNext,
+    this.onPrevious,
+    this.onVideoCompleted,
     this.showControls = true,
   });
 
@@ -329,13 +335,31 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
       if (!mounted) return;
       setState(() {
         _isPlaying = isPlaying;
-        debugPrint('[_Media3PlayerWidgetState] setState: _isPlaying set to $isPlaying');
+        debugPrint('[_Media3PlayerWidgetState] setState: _isPlaying set to $_isPlaying');
       });
+      
+      // If playing started, hide controls after delay
+      if (isPlaying && _showControls) {
+        _startControlsTimer();
+      }
       
       // Ensure wake lock is active when video is playing
       if (isPlaying) {
         _enableWakeLock();
         debugPrint('[WAKE_LOCK] Video started playing - wake lock reinforced');
+      }
+    });
+    
+    // Listen for playback state changes to detect completion
+    _controller!.onPerformanceUpdate.listen((data) {
+      if (data['type'] == 'playbackStateChanged' && data['state'] == 'ENDED') {
+        debugPrint('[_Media3PlayerWidgetState] Video completed (ENDED state)');
+        if (widget.onVideoCompleted != null) {
+           widget.onVideoCompleted!();
+        } else if (widget.onNext != null) {
+           // Default behavior: if onVideoCompleted is not provided but onNext is, call onNext
+           widget.onNext!();
+        }
       }
     });
     
@@ -1106,7 +1130,10 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                   },
                   isPlaying: _isPlaying,
                   onPlayPause: _togglePlayPause,
+
                   onSeekForward: _seekForward,
+                  onNext: widget.onNext,
+                  onPrevious: widget.onPrevious,
                   onSettings: () {
                     _controlsTimer?.cancel();
                     setState(() {
