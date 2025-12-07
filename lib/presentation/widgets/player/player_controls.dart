@@ -22,6 +22,7 @@ class PlayerTopControls extends StatelessWidget {
   final VoidCallback onCycleZoom;
   final ZoomMode currentZoomMode;
   final VoidCallback onPip;
+  final double currentVolume; // 0.0 to 1.0
 
   const PlayerTopControls({
     super.key,
@@ -37,6 +38,7 @@ class PlayerTopControls extends StatelessWidget {
     required this.onCycleZoom,
     required this.currentZoomMode,
     required this.onPip,
+    required this.currentVolume,
   });
 
   @override
@@ -132,7 +134,7 @@ class PlayerTopControls extends StatelessWidget {
                       ),
                       child: FractionallySizedBox(
                         alignment: Alignment.centerLeft,
-                        widthFactor: 0.7, // Static 70% for UI match
+                        widthFactor: currentVolume.clamp(0.0, 1.0),
                         child: Container(
                           decoration: BoxDecoration(
                             color: Colors.white,

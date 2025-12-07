@@ -10,6 +10,7 @@ import 'video_settings_dialog.dart';
 import 'player/player_gesture_controls.dart';
 import 'player/player_controls.dart';
 import 'player/player_settings_panel.dart';
+import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 
 
 
@@ -142,6 +143,8 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     debugPrint('[INIT] Initializing player widget...');
     WidgetsBinding.instance.addObserver(this);
     _initializeAnimations();
+    // Hide system volume UI
+    FlutterVolumeController.updateShowSystemUI(false);
     _initializeBrightness();
     _initializeVolume();
     _initializePlayer();
@@ -1083,6 +1086,7 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
                   onPip: () {
                     _enterPictureInPicture();
                   },
+                  currentVolume: _currentVolume,
                 ),
                 
                 // Center controls removed as per new UI design
@@ -1644,10 +1648,14 @@ class _Media3PlayerWidgetState extends State<Media3PlayerWidget>
     }
   }
 
+
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     
+    // Show system volume UI again when leaving player
+    FlutterVolumeController.updateShowSystemUI(true);
     // Cancel timers
     _controlsTimer?.cancel();
     _errorClearTimer?.cancel();

@@ -1359,12 +1359,8 @@ class Media3PlayerView(
                     val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
                     val targetVolume = (volume * maxVolume).toInt()
                     
-                    // Use FLAG_SHOW_UI to show system volume UI and properly handle mute state
-                    val flags = if (targetVolume > 0) {
-                        AudioManager.FLAG_SHOW_UI or AudioManager.FLAG_PLAY_SOUND
-                    } else {
-                        AudioManager.FLAG_SHOW_UI
-                    }
+                    // Use 0 flag to hide system volume UI
+                    val flags = 0
                     
                     audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVolume, flags)
                     result.success(null)
