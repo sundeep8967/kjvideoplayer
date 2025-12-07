@@ -1,11 +1,9 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:file_manager/file_manager.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../data/services/storage_service.dart';
+import '../../../data/services/video_scanner_service.dart';
 import '../../../data/models/video_model.dart';
 import '../../../core/utils/system_ui_helper.dart';
 import '../../widgets/ios_video_thumbnail.dart';
@@ -87,43 +85,12 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     });
 
     try {
-      DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-      AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-      final sdkInt = androidInfo.version.sdkInt;
-      
-      PermissionStatus permission;
-      
-      // Check current permission status first
-      if (sdkInt >= 33) {
-        // Android 13+ (API 33+) - Use scoped storage permissions
-        permission = await Permission.videos.status;
-        if (!permission.isGranted) {
-          permission = await Permission.videos.request();
-        }
-        
-        // Also check for photos permission if needed
-        if (permission.isGranted) {
-          final photosPermission = await Permission.photos.status;
-          if (!photosPermission.isGranted) {
-            await Permission.photos.request();
-          }
-        }
-      } else if (sdkInt >= 30) {
-        // Android 11-12 (API 30-32) - Use MANAGE_EXTERNAL_STORAGE
-        permission = await Permission.manageExternalStorage.status;
-        if (!permission.isGranted) {
-          permission = await Permission.manageExternalStorage.request();
-        }
-      } else {
-        // Android 10 and below - Use traditional storage permission
-        permission = await Permission.storage.status;
-        if (!permission.isGranted) {
-          permission = await Permission.storage.request();
-        }
-      }
+      // Use VideoScannerService for permission handling
+      final scannerService = VideoScannerService();
+      final hasPermission = await scannerService.requestStoragePermission();
       
       setState(() {
-        _hasPermission = permission.isGranted;
+        _hasPermission = hasPermission;
       });
       
       if (_hasPermission) {
@@ -153,63 +120,25 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     }
   }
 
+  /// Load all videos using background isolate (non-blocking)
   Future<void> _loadAllVideos() async {
     if (!_hasPermission) return;
     
     try {
-      List<VideoModel> videos = [];
+      // Use VideoScannerService with background isolate for non-blocking scanning
+      final scannerService = VideoScannerService();
+      final videos = await scannerService.scanAllVideosInBackground();
       
-      // Get common video directories
-      final directories = [
-        '/storage/emulated/0/Movies',
-        '/storage/emulated/0/DCIM',
-        '/storage/emulated/0/Download',
-        '/storage/emulated/0/Downloads',
-        '/storage/emulated/0/Pictures',
-        '/storage/emulated/0/Camera',
-        '/storage/emulated/0/WhatsApp/Media/WhatsApp Video',
-        '/storage/emulated/0/Telegram/Telegram Video',
-      ];
-      
-      for (final directoryPath in directories) {
-        final directory = Directory(directoryPath);
-        if (await directory.exists()) {
-          final entities = directory.listSync(recursive: true, followLinks: false);
-          
-          for (final entity in entities) {
-            if (entity is File && _isVideoFile(entity.path)) {
-              try {
-                final stat = entity.statSync();
-                final video = VideoModel(
-                  path: entity.path,
-                  name: entity.path.split('/').last,
-                  displayName: _getDisplayName(entity.path),
-                  size: stat.size,
-                  dateModified: stat.modified,
-                );
-                videos.add(video);
-              } catch (e) {
-                // Skip files that can't be accessed
-                continue;
-              }
-            }
-          }
-        }
+      if (mounted) {
+        setState(() {
+          _allVideos = videos;
+          _organizeFolders(videos);
+          _updateFilteredContent();
+        });
       }
-      
-      setState(() {
-        _allVideos = videos;
-        _organizeFolders(videos);
-        _updateFilteredContent();
-      });
     } catch (e) {
       print('Error loading videos: $e');
     }
-  }
-
-  bool _isVideoFile(String path) {
-    final extension = '.${path.split('.').last.toLowerCase()}';
-    return videoExtensions.contains(extension);
   }
 
   String _getDisplayName(String path) {

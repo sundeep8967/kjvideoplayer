@@ -1,34 +1,58 @@
 import 'dart:io';
-import 'package:file_manager/file_manager.dart';
+import 'dart:isolate';
+import 'package:external_path/external_path.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import '../models/video_model.dart';
 import '../models/folder_model.dart';
 import '../../core/constants/app_constants.dart';
 
+/// Data class for passing scan parameters to isolate
+class _ScanParams {
+  final List<String> directories;
+  final List<String> extensions;
+
+  _ScanParams(this.directories, this.extensions);
+}
+
+/// Data class for video data that can be passed across isolate boundary
+class _VideoData {
+  final String path;
+  final String name;
+  final String displayName;
+  final int size;
+  final int dateModifiedMs;
+
+  _VideoData({
+    required this.path,
+    required this.name,
+    required this.displayName,
+    required this.size,
+    required this.dateModifiedMs,
+  });
+}
+
 class VideoScannerService {
   static final VideoScannerService _instance = VideoScannerService._internal();
   factory VideoScannerService() => _instance;
   VideoScannerService._internal();
 
-  final FileManagerController _controller = FileManagerController();
-  
   /// Check and request storage permissions
   Future<bool> requestStoragePermission() async {
     try {
       DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
       AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
       final sdkInt = androidInfo.version.sdkInt;
-      
+
       PermissionStatus permission;
-      
+
       if (sdkInt >= 33) {
         // Android 13+ (API 33+) - Use scoped storage permissions
         permission = await Permission.videos.status;
         if (!permission.isGranted) {
           permission = await Permission.videos.request();
         }
-        
+
         // Also check for photos permission if needed
         if (permission.isGranted) {
           final photosPermission = await Permission.photos.status;
@@ -49,7 +73,7 @@ class VideoScannerService {
           permission = await Permission.storage.request();
         }
       }
-      
+
       return permission.isGranted;
     } catch (e) {
       print('Error requesting storage permission: $e');
@@ -57,142 +81,219 @@ class VideoScannerService {
     }
   }
 
-  /// Scan for all video files on the device
-  Future<List<VideoModel>> scanAllVideos() async {
+  /// Scan for all video files using background isolate (non-blocking)
+  Future<List<VideoModel>> scanAllVideosInBackground() async {
     final hasPermission = await requestStoragePermission();
     if (!hasPermission) {
       throw Exception('Storage permission not granted');
     }
 
-    List<VideoModel> allVideos = [];
-    
     try {
-      // Get common video directories
-      final directories = await _getVideoDirectories();
+      // Get directories dynamically
+      final directories = await _getVideoDirectoriesDynamic();
       
-      for (final directory in directories) {
-        if (await Directory(directory).exists()) {
-          final videos = await _scanDirectory(directory);
-          allVideos.addAll(videos);
-        }
-      }
+      print('[VideoScanner] Scanning ${directories.length} directories in background isolate');
       
-      // Remove duplicates based on path
-      final uniqueVideos = <String, VideoModel>{};
-      for (final video in allVideos) {
-        uniqueVideos[video.path] = video;
-      }
+      // Run scanning in background isolate
+      final params = _ScanParams(
+        directories,
+        AppConstants.supportedVideoExtensions,
+      );
       
-      return uniqueVideos.values.toList();
+      final videoDataList = await Isolate.run(() => _scanVideosIsolate(params));
+      
+      // Convert back to VideoModel
+      final videos = videoDataList.map((data) => VideoModel(
+        path: data.path,
+        name: data.name,
+        displayName: data.displayName,
+        size: data.size,
+        dateModified: DateTime.fromMillisecondsSinceEpoch(data.dateModifiedMs),
+      )).toList();
+      
+      print('[VideoScanner] Found ${videos.length} videos');
+      return videos;
     } catch (e) {
-      print('Error scanning videos: $e');
+      print('Error scanning videos in background: $e');
       return [];
     }
   }
 
-  /// Scan a specific directory for videos
-  Future<List<VideoModel>> _scanDirectory(String directoryPath) async {
-    List<VideoModel> videos = [];
+  /// Static function that runs in isolate - must be top-level or static
+  static List<_VideoData> _scanVideosIsolate(_ScanParams params) {
+    final List<_VideoData> allVideos = [];
+    final Set<String> seenPaths = {};
     
-    try {
-      final directory = Directory(directoryPath);
-      final entities = directory.listSync(recursive: true, followLinks: false);
-      
-      for (final entity in entities) {
-        if (entity is File && _isVideoFile(entity.path)) {
-          try {
-            final stat = entity.statSync();
-            final video = VideoModel(
-              path: entity.path,
-              name: entity.path.split('/').last,
-              displayName: _getDisplayName(entity.path),
-              size: stat.size,
-              dateModified: stat.modified,
-            );
-            videos.add(video);
-          } catch (e) {
-            // Skip files that can't be accessed
-            continue;
+    for (final directoryPath in params.directories) {
+      try {
+        final directory = Directory(directoryPath);
+        if (!directory.existsSync()) continue;
+        
+        // Use sync operations inside isolate (they won't block main thread)
+        final entities = directory.listSync(recursive: true, followLinks: false);
+        
+        for (final entity in entities) {
+          if (entity is File) {
+            final path = entity.path;
+            
+            // Check extension
+            final extension = '.${path.split('.').last.toLowerCase()}';
+            if (!params.extensions.contains(extension)) continue;
+            
+            // Skip duplicates
+            if (seenPaths.contains(path)) continue;
+            seenPaths.add(path);
+            
+            try {
+              final stat = entity.statSync();
+              final fileName = path.split('/').last;
+              final nameWithoutExtension = fileName.split('.').first;
+              final displayName = nameWithoutExtension
+                  .replaceAll('_', ' ')
+                  .replaceAll('-', ' ');
+              
+              allVideos.add(_VideoData(
+                path: path,
+                name: fileName,
+                displayName: displayName,
+                size: stat.size,
+                dateModifiedMs: stat.modified.millisecondsSinceEpoch,
+              ));
+            } catch (e) {
+              // Skip files that can't be accessed
+              continue;
+            }
           }
         }
+      } catch (e) {
+        // Skip directories that can't be accessed
+        continue;
       }
-    } catch (e) {
-      print('Error scanning directory $directoryPath: $e');
     }
     
-    return videos;
+    return allVideos;
   }
 
-  /// Get common video directories
-  Future<List<String>> _getVideoDirectories() async {
+  /// Get video directories dynamically using external_path package
+  Future<List<String>> _getVideoDirectoriesDynamic() async {
     List<String> directories = [];
-    
+
     try {
-      // Add common Android video directories
-      directories.addAll([
-        '/storage/emulated/0/Movies',
-        '/storage/emulated/0/DCIM',
-        '/storage/emulated/0/Download',
-        '/storage/emulated/0/Downloads',
-        '/storage/emulated/0/Pictures',
-        '/storage/emulated/0/Camera',
-        '/storage/emulated/0/WhatsApp/Media/WhatsApp Video',
-        '/storage/emulated/0/Telegram/Telegram Video',
-        '/storage/emulated/0/Android/media',
-      ]);
+      // Get external storage directories dynamically
+      final externalStorageDirs = await ExternalPath.getExternalStorageDirectories();
       
-      // Add external storage directories if available
-      final externalDirs = await _getExternalStorageDirectories();
-      directories.addAll(externalDirs);
+      print('[VideoScanner] Found ${externalStorageDirs.length} external storage roots');
+      
+      for (final storageRoot in externalStorageDirs) {
+        // Add common video subdirectories for each storage root
+        directories.addAll([
+          '$storageRoot/Movies',
+          '$storageRoot/DCIM',
+          '$storageRoot/Download',
+          '$storageRoot/Downloads',
+          '$storageRoot/Pictures',
+          '$storageRoot/Camera',
+          '$storageRoot/Video',
+          '$storageRoot/Videos',
+        ]);
+        
+        // Add app-specific media directories
+        directories.addAll([
+          '$storageRoot/WhatsApp/Media/WhatsApp Video',
+          '$storageRoot/Telegram/Telegram Video',
+          '$storageRoot/Android/media',
+        ]);
+      }
+      
+      // Also try to get public directories
+      try {
+        final movieDir = await ExternalPath.getExternalStoragePublicDirectory(
+          ExternalPath.DIRECTORY_MOVIES,
+        );
+        if (!directories.contains(movieDir)) {
+          directories.add(movieDir);
+        }
+        
+        final dcimDir = await ExternalPath.getExternalStoragePublicDirectory(
+          ExternalPath.DIRECTORY_DCIM,
+        );
+        if (!directories.contains(dcimDir)) {
+          directories.add(dcimDir);
+        }
+        
+        final downloadDir = await ExternalPath.getExternalStoragePublicDirectory(
+          ExternalPath.DIRECTORY_DOWNLOADS,
+        );
+        if (!directories.contains(downloadDir)) {
+          directories.add(downloadDir);
+        }
+      } catch (e) {
+        print('[VideoScanner] Could not get public directories: $e');
+      }
+      
+      // Add SD card directories
+      directories.addAll(await _getExternalStorageDirectories());
       
     } catch (e) {
-      print('Error getting video directories: $e');
+      print('[VideoScanner] Error getting dynamic directories: $e');
+      // Fallback to common paths if dynamic retrieval fails
+      directories = _getFallbackDirectories();
     }
-    
-    return directories;
+
+    // Remove duplicates and filter existing
+    return directories.toSet().toList();
   }
 
-  /// Get external storage directories
+  /// Fallback directories if dynamic retrieval fails
+  List<String> _getFallbackDirectories() {
+    return [
+      '/storage/emulated/0/Movies',
+      '/storage/emulated/0/DCIM',
+      '/storage/emulated/0/Download',
+      '/storage/emulated/0/Downloads',
+      '/storage/emulated/0/Pictures',
+      '/storage/emulated/0/Camera',
+      '/storage/emulated/0/WhatsApp/Media/WhatsApp Video',
+      '/storage/emulated/0/Telegram/Telegram Video',
+      '/storage/emulated/0/Android/media',
+    ];
+  }
+
+  /// Get external storage directories (SD cards, etc.)
   Future<List<String>> _getExternalStorageDirectories() async {
     List<String> directories = [];
-    
+
     try {
       // Check for SD card and other external storage
       final storageDir = Directory('/storage');
       if (await storageDir.exists()) {
         final entities = storageDir.listSync();
         for (final entity in entities) {
-          if (entity is Directory && entity.path != '/storage/emulated') {
+          if (entity is Directory && entity.path != '/storage/emulated' && entity.path != '/storage/self') {
             directories.add('${entity.path}/Movies');
             directories.add('${entity.path}/DCIM');
             directories.add('${entity.path}/Download');
+            directories.add('${entity.path}/Video');
           }
         }
       }
     } catch (e) {
-      print('Error getting external storage directories: $e');
+      print('[VideoScanner] Error getting external storage directories: $e');
     }
-    
+
     return directories;
   }
 
-  /// Check if file is a video file
-  bool _isVideoFile(String path) {
-    final extension = '.${path.split('.').last.toLowerCase()}';
-    return AppConstants.supportedVideoExtensions.contains(extension);
-  }
-
-  /// Get display name from file path
-  String _getDisplayName(String path) {
-    final fileName = path.split('/').last;
-    final nameWithoutExtension = fileName.split('.').first;
-    return nameWithoutExtension.replaceAll('_', ' ').replaceAll('-', ' ');
+  /// Legacy sync method - kept for backward compatibility but deprecated
+  @Deprecated('Use scanAllVideosInBackground() instead for better performance')
+  Future<List<VideoModel>> scanAllVideos() async {
+    return scanAllVideosInBackground();
   }
 
   /// Organize videos into folders
   List<FolderModel> organizeVideosIntoFolders(List<VideoModel> videos) {
     Map<String, List<VideoModel>> folderMap = {};
-    
+
     for (final video in videos) {
       final folderPath = video.path.substring(0, video.path.lastIndexOf('/'));
       if (!folderMap.containsKey(folderPath)) {
@@ -200,7 +301,7 @@ class VideoScannerService {
       }
       folderMap[folderPath]!.add(video);
     }
-    
+
     List<FolderModel> folders = [];
     for (final entry in folderMap.entries) {
       final folderName = entry.key.split('/').last;
@@ -208,12 +309,12 @@ class VideoScannerService {
         path: entry.key,
         name: folderName,
         videos: entry.value,
-        subfolders: [], // TODO: Implement nested folder structure
+        subfolders: [],
         dateModified: DateTime.now(),
       );
       folders.add(folder);
     }
-    
+
     return folders;
   }
 }
