@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:file_manager/file_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -63,6 +64,8 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     SystemUIHelper.initializeSystemUI();
     SystemUIHelper.setAppThemeUI();
     
+    _checkAndPromptDefaultPlayer();
+    
     _pageController = PageController(initialPage: _selectedTabIndex);
     _loadSavedViewMode();
     _checkAndRequestStoragePermission();
@@ -70,6 +73,39 @@ class _IOSVideoHomeScreenState extends State<IOSVideoHomeScreen>
     _loadAllVideos();
   }
 
+
+  Future<void> _checkAndPromptDefaultPlayer() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasPrompted = prefs.getBool('has_prompted_default_player') ?? false;
+
+    if (!hasPrompted && mounted) {
+      // Wait a bit for the app to load
+      await Future.delayed(const Duration(seconds: 2));
+      if (!mounted) return;
+
+      showCupertinoDialog(
+        context: context,
+        builder: (context) => CupertinoAlertDialog(
+          title: const Text('Make Default Player'),
+          content: const Text(
+            'To make i Player your default video player:\n\n'
+            '1. Open a video from your File Manager\n'
+            '2. Select "i Player"\n'
+            '3. Tap "Always"',
+          ),
+          actions: [
+            CupertinoDialogAction(
+              child: const Text('Got it'),
+              onPressed: () {
+                prefs.setBool('has_prompted_default_player', true);
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
+      );
+    }
+  }
 
   @override
   void dispose() {
