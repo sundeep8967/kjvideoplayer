@@ -56,7 +56,7 @@ class Media3PlayerController {
 
   void _setupMethodCallHandler() {
     _channel.setMethodCallHandler((call) async {
-      debugPrint('[Media3PlayerController] Native call: ${call.method} args: ${call.arguments}');
+      // debugPrint('[Media3PlayerController] Native call: ${call.method} args: ${call.arguments}');
       switch (call.method) {
         case 'onPlaybackStateChanged':
           _handlePlaybackStateChanged(call.arguments as Map<dynamic, dynamic>);
@@ -292,13 +292,13 @@ class Media3PlayerController {
     _position = Duration(milliseconds: positionMillis);
     _duration = Duration(milliseconds: durationMillis);
 
-    debugPrint('[Media3PlayerController] _handlePositionChanged: position=${_position.inSeconds}s, duration=${_duration.inSeconds}s');
-
+    // debugPrint('[Media3PlayerController] _handlePositionChanged: position=${_position.inSeconds}s, duration=${_duration.inSeconds}s');
+    
     _positionController.add({
       'position': _position,
       'duration': _duration,
     });
-    debugPrint('[Media3PlayerController] Emitted onPositionChanged: position=${_position.inSeconds}s, duration=${_duration.inSeconds}s');
+    // debugPrint('[Media3PlayerController] Emitted onPositionChanged: position=${_position.inSeconds}s, duration=${_duration.inSeconds}s');
   }
   
   void _handleError(Map<dynamic, dynamic> args) {

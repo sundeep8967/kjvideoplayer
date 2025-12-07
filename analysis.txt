@@ -1,0 +1,196 @@
+Analyzing kjvideoplayer...                                      
+
+   info • Angle brackets will be interpreted as HTML • lib/core/platform/media3_player_controller.dart:418:42 • unintended_html_in_doc_comment
+   info • The import of 'package:flutter/services.dart' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/material.dart' • lib/core/theme/app_theme.dart:2:8 • unnecessary_import
+   info • 'background' is deprecated and shouldn't be used. Use surface instead. This feature was deprecated after v3.18.0-0.1.pre • lib/core/theme/app_theme.dart:21:9 • deprecated_member_use
+   info • Unnecessary braces in a string interpolation • lib/data/models/video_model.dart:47:15 • unnecessary_brace_in_string_interps
+   info • Unnecessary braces in a string interpolation • lib/data/models/video_model.dart:49:13 • unnecessary_brace_in_string_interps
+   info • Don't invoke 'print' in production code • lib/data/services/storage_service.dart:32:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/storage_service.dart:72:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/storage_service.dart:124:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/storage_service.dart:160:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:30:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:37:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:43:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:62:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:78:11 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:95:11 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:101:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:104:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:109:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:123:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:140:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:153:11 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:159:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:181:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:218:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:244:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/thumbnail_service.dart:272:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/video_scanner_service.dart:79:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/video_scanner_service.dart:95:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/video_scanner_service.dart:114:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/video_scanner_service.dart:117:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/video_scanner_service.dart:185:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/video_scanner_service.dart:231:9 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/video_scanner_service.dart:238:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/data/services/video_scanner_service.dart:281:7 • avoid_print
+   info • The import of 'package:flutter/material.dart' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/cupertino.dart' • lib/presentation/animations/ios_page_transitions.dart:2:8 • unnecessary_import
+   info • The import of 'package:flutter/services.dart' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/material.dart' • lib/presentation/screens/home/ios_video_home_screen.dart:2:8 • unnecessary_import
+   info • The private field _folderVideos could be 'final' • lib/presentation/screens/home/ios_video_home_screen.dart:34:33 • prefer_final_fields
+   info • The private field _folderNames could be 'final' • lib/presentation/screens/home/ios_video_home_screen.dart:35:16 • prefer_final_fields
+warning • The value of the field 'iosSecondarySystemBackground' isn't used • lib/presentation/screens/home/ios_video_home_screen.dart:53:22 • unused_field
+   info • Don't invoke 'print' in production code • lib/presentation/screens/home/ios_video_home_screen.dart:100:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/presentation/screens/home/ios_video_home_screen.dart:119:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/presentation/screens/home/ios_video_home_screen.dart:140:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/presentation/screens/home/ios_video_home_screen.dart:230:7 • avoid_print
+   info • Don't invoke 'print' in production code • lib/presentation/screens/home/ios_video_home_screen.dart:239:7 • avoid_print
+   info • Use a 'SizedBox' to add whitespace to a layout • lib/presentation/screens/home/ios_video_home_screen.dart:742:13 • sized_box_for_whitespace
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/screens/home/ios_video_home_screen.dart:1183:43 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/screens/home/ios_video_home_screen.dart:1208:48 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/screens/home/ios_video_home_screen.dart:1263:38 • deprecated_member_use
+   info • Don't use 'BuildContext's across async gaps • lib/presentation/widgets/audio_tracks_dialog.dart:20:29 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/presentation/widgets/audio_tracks_dialog.dart:29:9 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/presentation/widgets/audio_tracks_dialog.dart:43:24 • use_build_context_synchronously
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/audio_tracks_dialog.dart:125:29 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/audio_tracks_dialog.dart:128:31 • deprecated_member_use
+   info • The import of 'package:flutter/material.dart' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/cupertino.dart' • lib/presentation/widgets/ios_action_sheet.dart:2:8 • unnecessary_import
+warning • The operand can't be 'null', so the condition is always 'true' • lib/presentation/widgets/ios_action_sheet.dart:63:46 • unnecessary_null_comparison
+warning • The '!' will have no effect because the receiver can't be null • lib/presentation/widgets/ios_action_sheet.dart:64:43 • unnecessary_non_null_assertion
+   info • Parameter 'title' could be a super parameter • lib/presentation/widgets/ios_action_sheet.dart:109:9 • use_super_parameters
+   info • The import of 'package:flutter/cupertino.dart' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/material.dart' • lib/presentation/widgets/ios_context_menu.dart:1:8 • unnecessary_import
+   info • Don't invoke 'print' in production code • lib/presentation/widgets/ios_folder_card.dart:66:7 • avoid_print
+warning • The declaration '_buildSingleDefaultThumbnail' isn't referenced • lib/presentation/widgets/ios_folder_card.dart:324:10 • unused_element
+   info • The private field _isBuffering could be 'final' • lib/presentation/widgets/media3_player_widget.dart:61:8 • prefer_final_fields
+warning • The value of the field '_draggingPosition' isn't used • lib/presentation/widgets/media3_player_widget.dart:76:13 • unused_field
+warning • The value of the field '_bufferedPercentage' isn't used • lib/presentation/widgets/media3_player_widget.dart:84:7 • unused_field
+warning • The value of the field '_performanceData' isn't used • lib/presentation/widgets/media3_player_widget.dart:110:24 • unused_field
+warning • The value of the field '_zoomModeToastMessage' isn't used • lib/presentation/widgets/media3_player_widget.dart:111:11 • unused_field
+warning • The declaration '_enterPictureInPicture' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:215:16 • unused_element
+   info • Angle brackets will be interpreted as HTML • lib/presentation/widgets/media3_player_widget.dart:238:42 • unintended_html_in_doc_comment
+warning • The declaration '_onBrightnessStart' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:534:8 • unused_element
+  error • Undefined name '_isBrightnessAdjusting' • lib/presentation/widgets/media3_player_widget.dart:536:7 • undefined_identifier
+warning • The declaration '_onBrightnessUpdate' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:542:8 • unused_element
+  error • Undefined name '_isBrightnessAdjusting' • lib/presentation/widgets/media3_player_widget.dart:543:10 • undefined_identifier
+warning • The declaration '_onBrightnessEnd' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:556:8 • unused_element
+  error • Undefined name '_isBrightnessAdjusting' • lib/presentation/widgets/media3_player_widget.dart:558:7 • undefined_identifier
+warning • The declaration '_getBrightnessIcon' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:605:12 • unused_element
+warning • The declaration '_onVolumeStart' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:616:8 • unused_element
+  error • Undefined name '_isVolumeAdjusting' • lib/presentation/widgets/media3_player_widget.dart:618:7 • undefined_identifier
+warning • The declaration '_onVolumeUpdate' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:624:8 • unused_element
+  error • Undefined name '_isVolumeAdjusting' • lib/presentation/widgets/media3_player_widget.dart:625:10 • undefined_identifier
+  error • The method '_adjustVolume' isn't defined for the type '_Media3PlayerWidgetState' • lib/presentation/widgets/media3_player_widget.dart:635:5 • undefined_method
+warning • The declaration '_toggleControls' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:639:8 • unused_element
+  error • Undefined name '_showSpeedMenu' • lib/presentation/widgets/media3_player_widget.dart:661:7 • undefined_identifier
+  error • Undefined name '_showVolumeSlider' • lib/presentation/widgets/media3_player_widget.dart:662:7 • undefined_identifier
+warning • The declaration '_changePlaybackSpeed' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:668:8 • unused_element
+  error • Undefined name '_showSpeedMenu' • lib/presentation/widgets/media3_player_widget.dart:679:7 • undefined_identifier
+warning • The declaration '_toggleMute' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:737:8 • unused_element
+warning • The declaration '_addBookmark' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:817:8 • unused_element
+warning • The declaration '_showZoomIndicatorWithTimer' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:829:8 • unused_element
+  error • Undefined name '_zoomIndicatorTimer' • lib/presentation/widgets/media3_player_widget.dart:831:5 • undefined_identifier
+  error • Undefined name '_showZoomIndicator' • lib/presentation/widgets/media3_player_widget.dart:834:10 • undefined_identifier
+  error • Undefined name '_showZoomIndicator' • lib/presentation/widgets/media3_player_widget.dart:836:9 • undefined_identifier
+  error • Undefined name '_zoomIndicatorTimer' • lib/presentation/widgets/media3_player_widget.dart:841:5 • undefined_identifier
+  error • Undefined name '_showZoomIndicator' • lib/presentation/widgets/media3_player_widget.dart:844:11 • undefined_identifier
+warning • The declaration '_resetZoom' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:850:8 • unused_element
+  error • Undefined name '_baseScaleFactor' • lib/presentation/widgets/media3_player_widget.dart:855:7 • undefined_identifier
+warning • The declaration '_cycleZoomMode' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:882:8 • unused_element
+  error • Undefined name '_baseScaleFactor' • lib/presentation/widgets/media3_player_widget.dart:911:7 • undefined_identifier
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1060:39 • deprecated_member_use
+  error • Undefined name '_showSpeedMenu' • lib/presentation/widgets/media3_player_widget.dart:1099:34 • undefined_identifier
+  error • Undefined name '_showSpeedMenu' • lib/presentation/widgets/media3_player_widget.dart:1102:23 • undefined_identifier
+  error • Undefined name '_showSpeedMenu' • lib/presentation/widgets/media3_player_widget.dart:1102:41 • undefined_identifier
+  error • Undefined name '_showVolumeSlider' • lib/presentation/widgets/media3_player_widget.dart:1103:23 • undefined_identifier
+  error • Undefined name '_showSpeedMenu' • lib/presentation/widgets/media3_player_widget.dart:1155:21 • undefined_identifier
+  error • Undefined name '_showSpeedMenu' • lib/presentation/widgets/media3_player_widget.dart:1161:38 • undefined_identifier
+  error • Undefined name '_showVolumeSlider' • lib/presentation/widgets/media3_player_widget.dart:1166:21 • undefined_identifier
+warning • The declaration '_formatDuration' isn't referenced • lib/presentation/widgets/media3_player_widget.dart:1207:10 • unused_element
+   info • Unnecessary braces in a string interpolation • lib/presentation/widgets/media3_player_widget.dart:1216:15 • unnecessary_brace_in_string_interps
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1332:38 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1333:38 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1334:38 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1335:38 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1336:38 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1375:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1376:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1377:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1378:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1379:40 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1390:47 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1455:71 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1455:103 • deprecated_member_use
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/presentation/widgets/media3_player_widget.dart:1468:61 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/presentation/widgets/media3_player_widget.dart:1472:61 • use_build_context_synchronously
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/media3_player_widget.dart:1487:100 • deprecated_member_use
+   info • The import of 'package:flutter/services.dart' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/material.dart' • lib/presentation/widgets/player/player_controls.dart:2:8 • unnecessary_import
+warning • Unused import: '../../../core/platform/media3_player_controller.dart' • lib/presentation/widgets/player/player_controls.dart:3:8 • unused_import
+  error • Target of URI doesn't exist: 'subtitle_tracks_dialog.dart' • lib/presentation/widgets/player/player_controls.dart:4:8 • uri_does_not_exist
+  error • Target of URI doesn't exist: 'video_settings_dialog.dart' • lib/presentation/widgets/player/player_controls.dart:5:8 • uri_does_not_exist
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:49:28 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:50:28 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:93:53 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:94:42 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:221:29 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:282:28 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:283:28 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:312:60 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:389:31 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:392:33 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:397:35 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:408:37 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:427:54 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:479:31 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:482:33 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:487:35 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:501:39 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_controls.dart:529:55 • deprecated_member_use
+  error • The parameter 'onDoubleTap' can't have a value of 'null' because of its type, but the implicit default value is 'null' • lib/presentation/widgets/player/player_gesture_controls.dart:27:10 • missing_default_value_for_parameter
+warning • The value of the field '_isSingleFingerSwipe' isn't used • lib/presentation/widgets/player/player_gesture_controls.dart:37:8 • unused_field
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_gesture_controls.dart:231:31 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_gesture_controls.dart:256:37 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_gesture_controls.dart:283:31 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_gesture_controls.dart:308:37 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_gesture_controls.dart:337:33 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/player/player_settings_panel.dart:38:35 • deprecated_member_use
+   info • Don't use 'BuildContext's across async gaps • lib/presentation/widgets/subtitle_tracks_dialog.dart:19:9 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/presentation/widgets/subtitle_tracks_dialog.dart:33:24 • use_build_context_synchronously
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/subtitle_tracks_dialog.dart:83:33 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/subtitle_tracks_dialog.dart:86:35 • deprecated_member_use
+   info • Unnecessary use of 'toList' in a spread • lib/presentation/widgets/subtitle_tracks_dialog.dart:202:14 • unnecessary_to_list_in_spreads
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/subtitle_tracks_dialog.dart:214:29 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/subtitle_tracks_dialog.dart:254:28 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/subtitle_tracks_dialog.dart:255:27 • deprecated_member_use
+warning • Unused import: 'dart:math' • lib/presentation/widgets/tinder_folder_cards.dart:2:8 • unused_import
+   info • The private field _dragPosition could be 'final' • lib/presentation/widgets/tinder_folder_cards.dart:28:10 • prefer_final_fields
+warning • The value of the field '_dragPosition' isn't used • lib/presentation/widgets/tinder_folder_cards.dart:28:10 • unused_field
+   info • The private field _isDragging could be 'final' • lib/presentation/widgets/tinder_folder_cards.dart:29:8 • prefer_final_fields
+warning • The value of the field '_isDragging' isn't used • lib/presentation/widgets/tinder_folder_cards.dart:29:8 • unused_field
+warning • The value of the field '_slideAnimation' isn't used • lib/presentation/widgets/tinder_folder_cards.dart:31:26 • unused_field
+warning • The value of the field '_scaleAnimation' isn't used • lib/presentation/widgets/tinder_folder_cards.dart:32:26 • unused_field
+warning • The value of the field '_rotationAnimation' isn't used • lib/presentation/widgets/tinder_folder_cards.dart:33:26 • unused_field
+warning • The declaration '_nextFolder' isn't referenced • lib/presentation/widgets/tinder_folder_cards.dart:50:8 • unused_element
+warning • The declaration '_previousFolder' isn't referenced • lib/presentation/widgets/tinder_folder_cards.dart:57:8 • unused_element
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/tinder_folder_cards.dart:215:36 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/tinder_folder_cards.dart:248:49 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/tinder_folder_cards.dart:255:51 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/tinder_folder_cards.dart:264:51 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/tinder_folder_cards.dart:281:41 • deprecated_member_use
+warning • Unused import: 'dart:math' • lib/presentation/widgets/tinder_video_cards.dart:2:8 • unused_import
+   info • The private field _dragPosition could be 'final' • lib/presentation/widgets/tinder_video_cards.dart:30:10 • prefer_final_fields
+warning • The value of the field '_dragPosition' isn't used • lib/presentation/widgets/tinder_video_cards.dart:30:10 • unused_field
+   info • The private field _isDragging could be 'final' • lib/presentation/widgets/tinder_video_cards.dart:31:8 • prefer_final_fields
+warning • The value of the field '_isDragging' isn't used • lib/presentation/widgets/tinder_video_cards.dart:31:8 • unused_field
+warning • The value of the field '_slideAnimation' isn't used • lib/presentation/widgets/tinder_video_cards.dart:33:26 • unused_field
+warning • The value of the field '_scaleAnimation' isn't used • lib/presentation/widgets/tinder_video_cards.dart:34:26 • unused_field
+warning • The value of the field '_rotationAnimation' isn't used • lib/presentation/widgets/tinder_video_cards.dart:35:26 • unused_field
+warning • The declaration '_nextCard' isn't referenced • lib/presentation/widgets/tinder_video_cards.dart:52:8 • unused_element
+warning • The declaration '_previousCard' isn't referenced • lib/presentation/widgets/tinder_video_cards.dart:59:8 • unused_element
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/tinder_video_cards.dart:232:36 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/tinder_video_cards.dart:265:49 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/tinder_video_cards.dart:272:51 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/tinder_video_cards.dart:281:51 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/tinder_video_cards.dart:298:41 • deprecated_member_use
+   info • Don't invoke 'print' in production code • lib/presentation/widgets/video_player/video_player_widget.dart:25:5 • avoid_print
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/video_settings_dialog.dart:81:33 • deprecated_member_use
+   info • 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss • lib/presentation/widgets/video_settings_dialog.dart:84:35 • deprecated_member_use
+
